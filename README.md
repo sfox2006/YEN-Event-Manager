@@ -9,7 +9,7 @@ The browser interface is hosted by GitHub Pages. It reads and writes JSON throug
 - Dashboard with readiness percentage, funding, speaker, venue and attendance summaries
 - Upcoming, past and cancelled event views with search and filters
 - Flexible event creation (only a name is required)
-- One event workspace for details, funding sources, speakers, venue, partner organisations, committee attendance and preparation checklist
+- One event workspace for details, funding sources, speakers, poster Drive links, venue, partner organisations, committee attendance and preparation checklist
 - Reusable committee and organisation directories with inactive/archive states
 - Stable record IDs and retained historical records
 - Explicit shared-save status, retryable errors, loading and empty states
@@ -32,6 +32,7 @@ Google Sheet
   ├─ Events
   ├─ Speakers
   ├─ Event_Speakers
+  ├─ Event_Posters
   ├─ Committee
   ├─ Event_Attendance
   ├─ Organisations
@@ -66,8 +67,8 @@ Do not manually create tabs or columns. The supplied setup function does it cons
 1. In the function selector at the top of Apps Script, select `setupSpreadsheet`.
 2. Click **Run**.
 3. Google will ask for permission to edit the Sheet. Choose the Sheet owner's account, review the requested access, and allow it.
-4. Return to the Sheet. It should now contain the ten tabs listed above, each with a dark-blue header row.
-5. The execution result should say that ten data tabs were created or verified.
+4. Return to the Sheet. It should now contain the eleven tabs listed above, each with a dark-blue header row.
+5. The execution result should say that eleven data tabs were created or verified.
 
 The function is safe to run again: it reuses existing tabs and does not erase data. It stores the Sheet ID in Apps Script's private Script Properties, not in this repository.
 

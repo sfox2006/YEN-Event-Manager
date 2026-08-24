@@ -7,6 +7,7 @@ const SCHEMA = {
   Events: ['event_id', 'event_name', 'description', 'event_type', 'date', 'start_time', 'end_time', 'status', 'lead_organiser_id', 'funding_required', 'room_required', 'registration_link', 'registration_numbers', 'registration_capacity', 'notes', 'created_at', 'updated_at'],
   Speakers: ['speaker_id', 'name', 'organisation_name', 'title', 'email', 'notes', 'created_at', 'updated_at'],
   Event_Speakers: ['event_speaker_id', 'event_id', 'speaker_id', 'invitation_status', 'notes', 'created_at', 'updated_at'],
+  Event_Posters: ['poster_id', 'event_id', 'title', 'drive_url', 'status', 'notes', 'created_at', 'updated_at'],
   Committee: ['member_id', 'name', 'role', 'organisation_id', 'email', 'active', 'created_at', 'updated_at'],
   Event_Attendance: ['attendance_id', 'event_id', 'member_id', 'attendance_status', 'event_role', 'notes', 'created_at', 'updated_at'],
   Organisations: ['organisation_id', 'organisation_name', 'acronym', 'contact_name', 'contact_email', 'notes', 'active', 'created_at', 'updated_at'],
@@ -18,7 +19,7 @@ const SCHEMA = {
 
 const ID_FIELDS = {
   Events: 'event_id', Speakers: 'speaker_id', Event_Speakers: 'event_speaker_id',
-  Committee: 'member_id', Event_Attendance: 'attendance_id', Organisations: 'organisation_id',
+  Event_Posters: 'poster_id', Committee: 'member_id', Event_Attendance: 'attendance_id', Organisations: 'organisation_id',
   Event_Organisations: 'event_organisation_id', Funding: 'funding_id', Venues: 'venue_id',
   Event_Checklist: 'checklist_id'
 };
@@ -132,6 +133,7 @@ function getEventDetailFromTables_(event, committee, organisations) {
   return {
     event: event,
     speakers: speakerDetails,
+    posters: readTable_('Event_Posters').filter(function (row) { return row.event_id === eventId; }),
     funding: readTable_('Funding').filter(function (row) { return row.event_id === eventId; }),
     venue: readTable_('Venues').find(function (row) { return row.event_id === eventId; }) || {},
     organisations: eventOrganisations,
@@ -167,6 +169,12 @@ function saveEventDetail_(payload) {
     return { event_speaker_id: row.event_speaker_id || makeId_('event_speaker'), event_id: eventId, speaker_id: speaker.speaker_id, invitation_status: row.invitation_status, notes: row.notes };
   });
   syncEventRows_('Event_Speakers', eventId, speakerLinks);
+
+  syncEventRows_('Event_Posters', eventId, (payload.posters || []).filter(function (row) {
+    return String(row.drive_url || '').trim() || String(row.title || '').trim();
+  }).map(function (row) {
+    row.poster_id = row.poster_id || makeId_('poster'); return row;
+  }));
 
   const venue = payload.venue || {};
   if (Object.keys(venue).length) {

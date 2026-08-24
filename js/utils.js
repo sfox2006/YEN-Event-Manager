@@ -2,6 +2,7 @@ export const STATUSES = {
   event: ['Idea', 'Planning', 'Confirmed', 'Registrations Open', 'Completed', 'Cancelled'],
   attendance: ['Confirmed attending', 'Likely attending', 'Awaiting response', 'Not attending', 'Not asked'],
   speaker: ['Not contacted', 'Invitation to be sent', 'Invited', 'Follow-up required', 'Confirmed', 'Declined', 'Withdrawn'],
+  poster: ['Draft requested', 'In progress', 'Ready for review', 'Approved', 'Published', 'Not required'],
   room: ['Not started', 'Requested', 'Tentatively booked', 'Confirmed', 'Not required'],
   checklist: ['Not started', 'In progress', 'Complete', 'Not applicable'],
   funding: ['No', 'Pending', 'Confirmed', 'N/A']

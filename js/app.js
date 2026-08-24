@@ -176,12 +176,13 @@ async function renderEventDetail(id) {
       ${panel('basic', 'Basic details', eventFields(event))}
       ${panel('funding', 'Funding', fundingFields(d.funding || []))}
       ${panel('speakers', `Speakers — ${speakerSummary(d.speakers)}`, speakerFields(d.speakers || []))}
+      ${panel('posters', 'Posters', posterFields(d.posters || []))}
       ${panel('venue', 'Room / venue', venueFields(d.venue || {}))}
       ${panel('organisations', 'Organisations involved', organisationFields(d.organisations || []))}
       ${panel('attendance', `Committee attendance — ${attendanceSummary(d.attendance)}`, attendanceFields(d.attendance || []))}
       ${panel('checklist', 'Event checklist', checklistFields(d.checklist || []))}
       <div class="panel"><div class="panel-body"><div class="form-actions"><span class="save-state" id="save-state">No unsaved changes.</span><button class="btn btn-primary" type="submit" id="save-event">Save all changes</button></div></div></div>
-    </form><aside class="detail-nav" aria-label="Event sections">${['basic','funding','speakers','venue','organisations','attendance','checklist'].map(s => `<a href="#${s}">${s[0].toUpperCase()+s.slice(1)}</a>`).join('')}</aside></div>`;
+    </form><aside class="detail-nav" aria-label="Event sections">${['basic','funding','speakers','posters','venue','organisations','attendance','checklist'].map(s => `<a href="#${s}">${s[0].toUpperCase()+s.slice(1)}</a>`).join('')}</aside></div>`;
   wireDetailForm();
 }
 
@@ -199,6 +200,14 @@ function speakerFields(rows) {
 }
 function speakerRow(row = {}) {
   return `<div class="repeat-row" data-kind="speaker" data-id="${escapeHtml(row.event_speaker_id || uid('event_speaker'))}" data-speaker-id="${escapeHtml(row.speaker_id || uid('speaker'))}"><div class="repeat-row-grid"><label>Name<input data-field="name" value="${escapeHtml(row.name)}"></label><label>Organisation<input data-field="organisation_name" value="${escapeHtml(row.organisation_name)}"></label><label>Title / position<input data-field="title" value="${escapeHtml(row.title)}"></label><label>Status<select data-field="invitation_status">${optionList(STATUSES.speaker, row.invitation_status || 'Not contacted')}</select></label><button type="button" class="icon-btn" data-remove aria-label="Remove speaker">Remove</button><label>Email<input data-field="email" type="email" value="${escapeHtml(row.email)}"></label><label class="field-span">Notes<input data-field="notes" value="${escapeHtml(row.notes)}"></label></div></div>`;
+}
+
+function posterFields(rows) {
+  return `<p class="subtle">Paste a shareable Google Drive link for each event poster. Ensure the Drive file's sharing permissions allow the intended committee members to open it.</p><div id="poster-rows" class="repeater">${rows.map(posterRow).join('')}</div><button type="button" class="btn btn-secondary" data-add="poster">+ Add poster link</button>`;
+}
+function posterRow(row = {}) {
+  const link = /^https:\/\//.test(row.drive_url || '') ? `<a href="${escapeHtml(row.drive_url)}" target="_blank" rel="noopener noreferrer">Open poster ↗</a>` : '';
+  return `<div class="repeat-row" data-kind="poster" data-id="${escapeHtml(row.poster_id || uid('poster'))}"><div class="repeat-row-grid"><label>Poster title<input data-field="title" value="${escapeHtml(row.title)}" placeholder="Main event poster"></label><label>Google Drive link<input data-field="drive_url" type="url" value="${escapeHtml(row.drive_url)}" placeholder="https://drive.google.com/…">${link}</label><label>Status<select data-field="status">${optionList(STATUSES.poster, row.status || 'Draft requested')}</select></label><label>Notes<input data-field="notes" value="${escapeHtml(row.notes)}"></label><button type="button" class="icon-btn" data-remove aria-label="Remove poster link">Remove</button></div></div>`;
 }
 
 function venueFields(venue) {
@@ -230,6 +239,7 @@ function collectRows(kind) {
     const record = {};
     row.querySelectorAll('[data-field]').forEach(field => { record[field.dataset.field] = field.value; });
     if (kind === 'speaker') { record.event_speaker_id = row.dataset.id; record.speaker_id = row.dataset.speakerId; }
+    if (kind === 'poster') record.poster_id = row.dataset.id;
     if (kind === 'funding') record.funding_id = row.dataset.id;
     if (kind === 'organisation') record.event_organisation_id = row.dataset.id;
     if (kind === 'attendance') { record.attendance_id = row.dataset.id; record.member_id = row.dataset.memberId; }
@@ -248,6 +258,7 @@ function wireDetailForm() {
       const kind = add.dataset.add;
       const container = document.querySelector(`#${kind}-rows`);
       if (kind === 'speaker') container.insertAdjacentHTML('beforeend', speakerRow());
+      if (kind === 'poster') container.insertAdjacentHTML('beforeend', posterRow());
       if (kind === 'funding') container.insertAdjacentHTML('beforeend', fundingRow());
       if (kind === 'organisation') { const wrapper = document.createElement('div'); wrapper.innerHTML = organisationFields([{}]); container.append(wrapper.querySelector('[data-kind="organisation"]')); }
       form.dispatchEvent(new Event('input'));
@@ -260,7 +271,7 @@ function wireDetailForm() {
     const button = document.querySelector('#save-event'); const saveState = document.querySelector('#save-state');
     button.disabled = true; button.textContent = 'Saving…'; saveState.textContent = 'Saving to shared sheet…'; saveState.classList.remove('error');
     try {
-      const payload = { event: { ...formObject(form), event_id: state.event.event.event_id }, funding: collectRows('funding'), speakers: collectRows('speaker'), venue: collectRows('venue')[0] || {}, organisations: collectRows('organisation'), attendance: collectRows('attendance'), checklist: collectRows('checklist') };
+      const payload = { event: { ...formObject(form), event_id: state.event.event.event_id }, funding: collectRows('funding'), speakers: collectRows('speaker'), posters: collectRows('poster'), venue: collectRows('venue')[0] || {}, organisations: collectRows('organisation'), attendance: collectRows('attendance'), checklist: collectRows('checklist') };
       state.event = await api.saveEventDetail(payload); form.dataset.dirty = 'false'; saveState.textContent = 'Saved'; toast('All changes saved to the shared sheet.'); await ensureBootstrap(true);
     } catch (error) { saveState.textContent = `Error saving — ${error.message}`; saveState.classList.add('error'); }
     finally { button.disabled = false; button.textContent = 'Save all changes'; }
