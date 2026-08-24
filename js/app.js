@@ -4,7 +4,7 @@ import { STATUSES, CHECKLIST_ITEMS, escapeHtml, formatDate, eventBucket, progres
 const app = document.querySelector('#app');
 const nav = document.querySelector('#main-nav');
 const navToggle = document.querySelector('.nav-toggle');
-const state = { bootstrap: null, event: null, filter: 'upcoming' };
+const state = { bootstrap: null, event: null, filter: 'upcoming', taskMemberFilter: '' };
 
 const badge = value => `<span class="badge badge-${statusTone(value)}">${escapeHtml(value || 'Not set')}</span>`;
 const uid = prefix => `${prefix}_${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
@@ -75,13 +75,14 @@ async function route() {
   setActiveNav(routeName === 'event' ? 'events' : routeName);
   loading();
   if (!isConfigured()) {
-    state.bootstrap ||= { events: [], committee: [], organisations: [] };
+    state.bootstrap ||= { events: [], committee: [], organisations: [], tasks: [] };
   } else {
     try { await ensureBootstrap(); } catch (error) { errorView(error); return; }
   }
   try {
     if (routeName === 'events') renderEvents();
     else if (routeName === 'event' && id) await renderEventDetail(id);
+    else if (routeName === 'tasks') renderTasks();
     else if (routeName === 'committee') renderCommittee();
     else if (routeName === 'organisations') renderOrganisations();
     else renderDashboard();
@@ -94,6 +95,9 @@ function renderDashboard() {
   const events = (state.bootstrap.events || []).filter(event => eventBucket(event) === 'upcoming').sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
   const confirmed = events.filter(event => ['Confirmed', 'Registrations Open'].includes(event.status)).length;
   const actionNeeded = events.filter(event => (event.progress || 0) < 50).length;
+  const openTasks = (state.bootstrap.tasks || []).filter(task => task.status !== 'Complete');
+  const today = new Date().toISOString().slice(0, 10);
+  const overdueTasks = openTasks.filter(task => task.due_date && task.due_date < today);
   app.innerHTML = `${configNotice()}
     <header class="page-header"><div><h1>Dashboard</h1><p>Where are we at with each event?</p></div><div class="header-actions"><button class="btn btn-primary" id="add-event">+ Add Event</button></div></header>
     <section class="summary-grid" aria-label="Event summary">
@@ -101,6 +105,8 @@ function renderDashboard() {
       <div class="metric"><strong>${confirmed}</strong><span>Confirmed or open</span></div>
       <div class="metric"><strong>${actionNeeded}</strong><span>Below 50% readiness</span></div>
       <div class="metric"><strong>${events.reduce((sum, e) => sum + Number(e.committee_confirmed || 0), 0)}</strong><span>Confirmed attendances</span></div>
+      <div class="metric"><strong>${openTasks.length}</strong><span>Open committee tasks</span></div>
+      <div class="metric"><strong>${overdueTasks.length}</strong><span>Overdue tasks</span></div>
     </section>
     <section class="panel"><div class="panel-header"><h2>Upcoming events</h2><a href="#/events">View all events</a></div>
       ${events.length ? eventTable(events) : `<div class="empty-state"><h2>No upcoming events yet</h2><p>Create an event to start tracking preparations.</p><button class="btn btn-primary" id="empty-add-event">+ Add Event</button></div>`}
@@ -200,10 +206,12 @@ async function renderEventDetail(id) {
       ${panel('venue', 'Room / venue', venueFields(d.venue || {}))}
       ${panel('organisations', 'Organisations involved', organisationFields(d.organisations || []))}
       ${panel('attendance', `Committee attendance — ${attendanceSummary(d.attendance)}`, attendanceFields(d.attendance || []))}
+      ${panel('event-tasks', 'Tasks', eventTaskFields(d.tasks || [], event.event_id))}
       ${panel('checklist', 'Event checklist', checklistFields(d.checklist || []))}
       <div class="panel"><div class="panel-body"><div class="form-actions"><span class="save-state" id="save-state">No unsaved changes.</span><button class="btn btn-primary" type="submit" id="save-event">Save all changes</button></div></div></div>
-    </form><aside class="detail-nav" aria-label="Event sections">${['basic','funding','speakers','posters','venue','organisations','attendance','checklist'].map(s => `<a href="#${s}">${s[0].toUpperCase()+s.slice(1)}</a>`).join('')}</aside></div>`;
+    </form><aside class="detail-nav" aria-label="Event sections">${['basic','funding','speakers','posters','venue','organisations','attendance','event-tasks','checklist'].map(s => `<a href="#${s}">${s === 'event-tasks' ? 'Tasks' : s[0].toUpperCase()+s.slice(1)}</a>`).join('')}</aside></div>`;
   wireDetailForm();
+  wireEventTaskPanel();
 }
 
 function panel(id, title, body) { return `<section class="panel" id="${id}"><div class="panel-header"><h2>${title}</h2></div><div class="panel-body">${body}</div></section>`; }
@@ -252,6 +260,122 @@ function checklistFields(rows) {
   const groups = [...new Set(all.map(row => row.item_type))];
   const registration = `<div class="form-grid cols-3"><label class="field-span">Registration link<input name="registration_link" type="url" value="${escapeHtml(state.event.event.registration_link)}" placeholder="https://…"></label><label>Current registrations<input name="registration_numbers" type="number" min="0" value="${escapeHtml(state.event.event.registration_numbers)}"></label><label>Registration capacity<input name="registration_capacity" type="number" min="0" value="${escapeHtml(state.event.event.registration_capacity)}"></label></div>`;
   return registration + groups.map(group => `<div class="checklist-group"><h3>${escapeHtml(group)}</h3>${all.filter(row => row.item_type === group).map(row => `<div class="checklist-row" data-kind="checklist" data-id="${escapeHtml(row.checklist_id)}" data-type="${escapeHtml(row.item_type)}" data-name="${escapeHtml(row.item_name)}"><strong>${escapeHtml(row.item_name)}</strong><select data-field="status">${optionList(STATUSES.checklist, row.status)}</select><input data-field="notes" value="${escapeHtml(row.notes)}" placeholder="Notes (optional)"></div>`).join('')}</div>`).join('');
+}
+
+function eventTaskFields(tasks, eventId) {
+  const sorted = [...tasks].sort((a, b) => (a.status === 'Complete') - (b.status === 'Complete') || (a.due_date || '9999').localeCompare(b.due_date || '9999'));
+  return `<div id="event-task-list">${sorted.length ? `<div class="task-cards">${sorted.map(taskCard).join('')}</div>` : `<div class="empty-inline">No tasks have been assigned for this event.</div>`}</div><div class="form-actions"><a class="btn btn-secondary" href="#/tasks">View all tasks</a><button type="button" class="btn btn-primary" data-add-event-task="${escapeHtml(eventId)}">+ Add task</button></div>`;
+}
+
+function taskCard(task) {
+  const member = (state.bootstrap.committee || []).find(row => row.member_id === task.assignee_member_id);
+  const overdue = task.status !== 'Complete' && task.due_date && task.due_date < new Date().toISOString().slice(0, 10);
+  return `<article class="task-card"><div><strong>${escapeHtml(task.task_name)}</strong><div class="subtle">${escapeHtml(member?.name || 'Unassigned')}${task.due_date ? ` · Due ${formatDate(task.due_date)}` : ''}</div></div><div>${badge(overdue ? 'Overdue' : task.status || 'Not started')}</div><button type="button" class="btn btn-secondary" data-edit-task="${escapeHtml(task.task_id)}">Edit</button></article>`;
+}
+
+function cacheTask(task) {
+  state.bootstrap.tasks = (state.bootstrap.tasks || []).filter(row => row.task_id !== task.task_id).concat(task);
+  if (state.event?.event) {
+    state.event.tasks = (state.event.tasks || []).filter(row => row.task_id !== task.task_id);
+    if (task.event_id === state.event.event.event_id) state.event.tasks.push(task);
+  }
+}
+
+function removeCachedTask(taskId) {
+  state.bootstrap.tasks = (state.bootstrap.tasks || []).filter(row => row.task_id !== taskId);
+  if (state.event) state.event.tasks = (state.event.tasks || []).filter(row => row.task_id !== taskId);
+}
+
+function renderTasks() {
+  const tasks = state.bootstrap.tasks || [];
+  const activeMembers = (state.bootstrap.committee || []).filter(member => String(member.active).toLowerCase() !== 'false');
+  const events = state.bootstrap.events || [];
+  const open = tasks.filter(task => task.status !== 'Complete');
+  const today = new Date().toISOString().slice(0, 10);
+  app.innerHTML = `${configNotice()}<header class="page-header"><div><h1>Tasks</h1><p>See what needs doing, who owns it, and how work is progressing.</p></div><button class="btn btn-primary" id="add-task">+ Add task</button></header>
+    <section class="summary-grid task-summary" aria-label="Task summary"><div class="metric"><strong>${open.length}</strong><span>Open tasks</span></div><div class="metric"><strong>${open.filter(task => task.due_date && task.due_date < today).length}</strong><span>Overdue</span></div><div class="metric"><strong>${tasks.filter(task => task.status === 'Blocked').length}</strong><span>Blocked</span></div><div class="metric"><strong>${tasks.filter(task => task.status === 'Complete').length}</strong><span>Complete</span></div></section>
+    <div class="toolbar task-toolbar"><label>Search<input id="task-search" type="search" placeholder="Search tasks"></label><label>View tasks for<select id="task-member"><option value="">Everyone</option>${activeMembers.map(member => `<option value="${member.member_id}" ${member.member_id === state.taskMemberFilter ? 'selected' : ''}>${escapeHtml(member.name)}</option>`).join('')}</select></label><label>Status<select id="task-status-filter"><option value="">All statuses</option>${optionList(STATUSES.task)}</select></label><label>Event<select id="task-event-filter"><option value="">All events</option><option value="none">General tasks</option>${events.map(event => `<option value="${event.event_id}">${escapeHtml(event.event_name)}</option>`).join('')}</select></label></div>
+    <section class="panel" id="task-list"></section>`;
+  const update = () => {
+    const search = document.querySelector('#task-search').value.toLowerCase();
+    const member = document.querySelector('#task-member').value;
+    const status = document.querySelector('#task-status-filter').value;
+    const eventId = document.querySelector('#task-event-filter').value;
+    state.taskMemberFilter = member;
+    const filtered = tasks.filter(task => task.task_name.toLowerCase().includes(search) && (!member || task.assignee_member_id === member) && (!status || task.status === status) && (!eventId || (eventId === 'none' ? !task.event_id : task.event_id === eventId)));
+    document.querySelector('#task-list').innerHTML = filtered.length ? taskTable(filtered) : `<div class="empty-state"><h2>No matching tasks</h2><p>Add a task or adjust the filters.</p></div>`;
+    wireTaskRows();
+  };
+  document.querySelector('#add-task').addEventListener('click', () => openTaskDialog());
+  ['#task-search', '#task-member', '#task-status-filter', '#task-event-filter'].forEach(selector => document.querySelector(selector).addEventListener('input', update));
+  update();
+}
+
+function taskTable(tasks) {
+  const members = state.bootstrap.committee || [];
+  const events = state.bootstrap.events || [];
+  const today = new Date().toISOString().slice(0, 10);
+  const sorted = [...tasks].sort((a, b) => (a.status === 'Complete') - (b.status === 'Complete') || (a.due_date || '9999').localeCompare(b.due_date || '9999'));
+  return `<div class="table-wrap"><table class="responsive"><thead><tr><th>Task</th><th>Event</th><th>Assigned to</th><th>Due</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead><tbody>${sorted.map(task => {
+    const member = members.find(row => row.member_id === task.assignee_member_id);
+    const event = events.find(row => row.event_id === task.event_id);
+    const overdue = task.status !== 'Complete' && task.due_date && task.due_date < today;
+    return `<tr data-task-row="${escapeHtml(task.task_id)}"><td data-label="Task"><strong>${escapeHtml(task.task_name)}</strong><div class="subtle">${escapeHtml(task.description || '')}</div></td><td data-label="Event">${escapeHtml(event?.event_name || 'General')}</td><td data-label="Assigned to">${escapeHtml(member?.name || 'Unassigned')}</td><td data-label="Due">${task.due_date ? formatDate(task.due_date) : 'No due date'}${overdue ? '<div class="subtle danger-text">Overdue</div>' : ''}</td><td data-label="Priority">${escapeHtml(task.priority || 'Normal')}</td><td data-label="Status"><select class="task-status-select" data-task-status="${escapeHtml(task.task_id)}">${optionList(STATUSES.task, task.status || 'Not started')}</select></td><td data-label="Actions"><div class="row-actions"><button class="btn btn-secondary" data-edit-task="${escapeHtml(task.task_id)}">Edit</button><button class="btn btn-danger" data-delete-task="${escapeHtml(task.task_id)}">Delete</button></div></td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
+function wireTaskRows() {
+  document.querySelectorAll('[data-task-status]').forEach(select => select.addEventListener('change', async () => {
+    const task = (state.bootstrap.tasks || []).find(row => row.task_id === select.dataset.taskStatus);
+    if (!task) return;
+    const previous = task.status; select.disabled = true;
+    try { const saved = await api.saveTask({ ...task, status: select.value }); cacheTask(saved); toast('Task status saved.'); }
+    catch (error) { select.value = previous; toast(error.message, 'error'); }
+    finally { select.disabled = false; }
+  }));
+  document.querySelectorAll('[data-edit-task]').forEach(button => button.addEventListener('click', () => {
+    const task = (state.bootstrap.tasks || []).find(row => row.task_id === button.dataset.editTask);
+    if (task) openTaskDialog(task);
+  }));
+  document.querySelectorAll('[data-delete-task]').forEach(button => button.addEventListener('click', async () => {
+    const task = (state.bootstrap.tasks || []).find(row => row.task_id === button.dataset.deleteTask);
+    if (!task || !window.confirm(`Delete the task “${task.task_name}”? This cannot be undone.`)) return;
+    button.disabled = true;
+    try { await api.deleteTask(task.task_id); removeCachedTask(task.task_id); toast('Task deleted.'); renderTasks(); }
+    catch (error) { button.disabled = false; toast(error.message, 'error'); }
+  }));
+}
+
+function openTaskDialog(record = {}, defaultEventId = '') {
+  const dialog = document.createElement('dialog');
+  const members = state.bootstrap.committee || [];
+  const events = state.bootstrap.events || [];
+  dialog.innerHTML = `<form method="dialog"><div class="dialog-header"><h2>${record.task_id ? 'Edit task' : 'Add task'}</h2><button class="icon-btn" value="cancel" aria-label="Close">✕</button></div><div class="dialog-body"><div class="form-grid"><label class="field-span">Task name<input name="task_name" required value="${escapeHtml(record.task_name)}"></label><label class="field-span">Description<textarea name="description">${escapeHtml(record.description)}</textarea></label><label>Assign to<select name="assignee_member_id"><option value="">Unassigned</option>${members.map(member => `<option value="${member.member_id}" ${member.member_id === record.assignee_member_id ? 'selected' : ''}>${escapeHtml(member.name)}${String(member.active).toLowerCase() === 'false' ? ' (inactive)' : ''}</option>`).join('')}</select></label><label>Event<select name="event_id"><option value="">General task</option>${events.map(event => `<option value="${event.event_id}" ${event.event_id === (record.event_id || defaultEventId) ? 'selected' : ''}>${escapeHtml(event.event_name)}</option>`).join('')}</select></label><label>Due date<input name="due_date" type="date" value="${escapeHtml(record.due_date)}"></label><label>Priority<select name="priority">${optionList(STATUSES.priority, record.priority || 'Normal')}</select></label><label>Status<select name="status">${optionList(STATUSES.task, record.status || 'Not started')}</select></label><label class="field-span">Notes<textarea name="notes">${escapeHtml(record.notes)}</textarea></label></div><div class="form-actions"><span class="save-state"></span><button class="btn btn-secondary" value="cancel">Cancel</button><button class="btn btn-primary" value="save">Save task</button></div></div></form>`;
+  document.body.append(dialog); dialog.showModal(); dialog.addEventListener('close', () => dialog.remove());
+  dialog.querySelector('form').addEventListener('submit', async event => {
+    if (event.submitter.value === 'cancel') return;
+    event.preventDefault(); event.submitter.disabled = true; event.submitter.textContent = 'Saving…';
+    try {
+      const saved = await api.saveTask({ ...record, ...formObject(event.currentTarget) });
+      cacheTask(saved); dialog.close(); toast('Task saved.');
+      if (location.hash.startsWith('#/tasks')) renderTasks(); else refreshEventTaskPanel();
+    } catch (error) { event.submitter.disabled = false; event.submitter.textContent = 'Save task'; dialog.querySelector('.save-state').textContent = error.message; dialog.querySelector('.save-state').classList.add('error'); }
+  });
+}
+
+function wireEventTaskPanel() {
+  document.querySelector('[data-add-event-task]')?.addEventListener('click', button => openTaskDialog({}, button.currentTarget.dataset.addEventTask));
+  document.querySelectorAll('#event-tasks [data-edit-task]').forEach(button => button.addEventListener('click', () => {
+    const task = (state.bootstrap.tasks || []).find(row => row.task_id === button.dataset.editTask);
+    if (task) openTaskDialog(task);
+  }));
+}
+
+function refreshEventTaskPanel() {
+  const body = document.querySelector('#event-tasks .panel-body');
+  if (!body || !state.event?.event) return;
+  body.innerHTML = eventTaskFields(state.event.tasks || [], state.event.event.event_id);
+  wireEventTaskPanel();
 }
 
 function collectRows(kind) {

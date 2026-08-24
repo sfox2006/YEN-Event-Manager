@@ -47,6 +47,7 @@ test('event details are assembled from one table snapshot', () => {
     Speakers: [{ speaker_id: 'speaker_1', name: 'Speaker One' }],
     Event_Speakers: [{ event_speaker_id: 'link_1', event_id: 'event_1', speaker_id: 'speaker_1', invitation_status: 'Confirmed' }],
     Event_Posters: [{ poster_id: 'poster_1', event_id: 'event_1', title: 'Main poster' }],
+    Event_Tasks: [{ task_id: 'task_1', event_id: 'event_1', task_name: 'Book the room', status: 'In progress' }],
     Funding: [], Venues: [],
     Organisations: [{ organisation_id: 'org_1', organisation_name: 'Partner' }],
     Event_Organisations: [{ event_organisation_id: 'org_link_1', event_id: 'event_1', organisation_id: 'org_1' }],
@@ -57,6 +58,14 @@ test('event details are assembled from one table snapshot', () => {
   assert.equal(detail.speakers[0].name, 'Speaker One');
   assert.equal(detail.speakers[0].invitation_status, 'Confirmed');
   assert.equal(detail.posters[0].title, 'Main poster');
+  assert.equal(detail.tasks[0].task_name, 'Book the room');
   assert.equal(detail.organisations[0].organisation_name, 'Partner');
 });
 
+test('task schema supports assignment and progress tracking', () => {
+  const context = contextFor();
+  const headers = vm.runInContext('SCHEMA.Event_Tasks', context);
+  for (const field of ['task_id', 'event_id', 'assignee_member_id', 'due_date', 'priority', 'status']) {
+    assert.ok(headers.includes(field));
+  }
+});

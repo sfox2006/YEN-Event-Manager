@@ -8,6 +8,7 @@ const SCHEMA = {
   Speakers: ['speaker_id', 'name', 'organisation_name', 'title', 'email', 'notes', 'created_at', 'updated_at'],
   Event_Speakers: ['event_speaker_id', 'event_id', 'speaker_id', 'invitation_status', 'notes', 'created_at', 'updated_at'],
   Event_Posters: ['poster_id', 'event_id', 'title', 'drive_url', 'status', 'notes', 'created_at', 'updated_at'],
+  Event_Tasks: ['task_id', 'event_id', 'task_name', 'description', 'assignee_member_id', 'due_date', 'priority', 'status', 'notes', 'created_at', 'updated_at'],
   Committee: ['member_id', 'name', 'role', 'organisation_id', 'email', 'active', 'created_at', 'updated_at'],
   Event_Attendance: ['attendance_id', 'event_id', 'member_id', 'attendance_status', 'event_role', 'notes', 'created_at', 'updated_at'],
   Organisations: ['organisation_id', 'organisation_name', 'acronym', 'contact_name', 'contact_email', 'notes', 'active', 'created_at', 'updated_at'],
@@ -19,7 +20,7 @@ const SCHEMA = {
 
 const ID_FIELDS = {
   Events: 'event_id', Speakers: 'speaker_id', Event_Speakers: 'event_speaker_id',
-  Event_Posters: 'poster_id', Committee: 'member_id', Event_Attendance: 'attendance_id', Organisations: 'organisation_id',
+  Event_Posters: 'poster_id', Event_Tasks: 'task_id', Committee: 'member_id', Event_Attendance: 'attendance_id', Organisations: 'organisation_id',
   Event_Organisations: 'event_organisation_id', Funding: 'funding_id', Venues: 'venue_id',
   Event_Checklist: 'checklist_id'
 };
@@ -80,6 +81,8 @@ function handleRequest_(params, body) {
     if (action === 'saveEventDetail') return withLock_(function () { return json_({ ok: true, data: saveEventDetail_(body || {}) }); });
     if (action === 'saveCommittee') return withLock_(function () { return json_({ ok: true, data: saveCommittee_(body.member || {}) }); });
     if (action === 'saveOrganisation') return withLock_(function () { return json_({ ok: true, data: saveOrganisation_(body.organisation || {}) }); });
+    if (action === 'saveTask') return withLock_(function () { return json_({ ok: true, data: saveTask_(body.task || {}) }); });
+    if (action === 'deleteTask') return withLock_(function () { return json_({ ok: true, data: deleteTask_(body.task_id) }); });
     return json_({ ok: false, error: 'Unknown API action: ' + action });
   } catch (error) {
     console.error(error && error.stack ? error.stack : error);
@@ -106,7 +109,7 @@ function getBootstrap_() {
       organisation_ids: detail.organisations.map(function (row) { return row.organisation_id; })
     });
   });
-  return { events: events, committee: tables.Committee, organisations: tables.Organisations };
+  return { events: events, committee: tables.Committee, organisations: tables.Organisations, tasks: tables.Event_Tasks };
 }
 
 function getEventDetail_(eventId) {
@@ -133,6 +136,7 @@ function buildEventDetail_(event, tables) {
     event: event,
     speakers: speakerDetails,
     posters: tables.Event_Posters.filter(function (row) { return row.event_id === eventId; }),
+    tasks: tables.Event_Tasks.filter(function (row) { return row.event_id === eventId; }),
     funding: tables.Funding.filter(function (row) { return row.event_id === eventId; }),
     venue: tables.Venues.find(function (row) { return row.event_id === eventId; }) || {},
     organisations: eventOrganisations,
@@ -216,6 +220,28 @@ function saveOrganisation_(organisation) {
   const saved = upsertInMemory_('Organisations', rows, organisation, new Date().toISOString());
   writeTable_('Organisations', rows, spreadsheet);
   return saved;
+}
+
+function saveTask_(task) {
+  if (!String(task.task_name || '').trim()) throw new Error('Task name is required.');
+  const spreadsheet = getSpreadsheet_();
+  const rows = readTableFromSheet_(getSheet_('Event_Tasks', spreadsheet), 'Event_Tasks');
+  task.task_id = task.task_id || makeId_('task');
+  task.status = task.status || 'Not started';
+  task.priority = task.priority || 'Normal';
+  const saved = upsertInMemory_('Event_Tasks', rows, task, new Date().toISOString());
+  writeTable_('Event_Tasks', rows, spreadsheet);
+  return saved;
+}
+
+function deleteTask_(taskId) {
+  if (!taskId) throw new Error('task_id is required.');
+  const spreadsheet = getSpreadsheet_();
+  const rows = readTableFromSheet_(getSheet_('Event_Tasks', spreadsheet), 'Event_Tasks');
+  const remaining = rows.filter(function (row) { return row.task_id !== taskId; });
+  if (remaining.length === rows.length) throw new Error('Task not found.');
+  writeTable_('Event_Tasks', remaining, spreadsheet);
+  return { task_id: taskId };
 }
 
 function progressFor_(detail) {

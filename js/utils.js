@@ -3,6 +3,8 @@ export const STATUSES = {
   attendance: ['Confirmed attending', 'Likely attending', 'Awaiting response', 'Not attending', 'Not asked'],
   speaker: ['Not contacted', 'Invitation to be sent', 'Invited', 'Follow-up required', 'Confirmed', 'Declined', 'Withdrawn'],
   poster: ['Draft requested', 'In progress', 'Ready for review', 'Approved', 'Published', 'Not required'],
+  task: ['Not started', 'In progress', 'Blocked', 'Complete'],
+  priority: ['Low', 'Normal', 'High', 'Urgent'],
   room: ['Not started', 'Requested', 'Tentatively booked', 'Confirmed', 'Not required'],
   checklist: ['Not started', 'In progress', 'Complete', 'Not applicable'],
   funding: ['No', 'Pending', 'Confirmed', 'N/A']
@@ -69,7 +71,7 @@ export function statusTone(value = '') {
   const text = String(value).toLowerCase();
   if (/confirmed|complete|registrations open|attending/.test(text) && !/not /.test(text)) return 'success';
   if (/pending|planning|requested|likely|awaiting|invited|progress|idea|tentative/.test(text)) return 'warning';
-  if (/declined|cancelled|not started|follow-up|no$|not attending/.test(text)) return 'danger';
+  if (/declined|cancelled|not started|follow-up|blocked|overdue|no$|not attending/.test(text)) return 'danger';
   return 'neutral';
 }
 

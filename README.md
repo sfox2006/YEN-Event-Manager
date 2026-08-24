@@ -10,6 +10,7 @@ The browser interface is hosted by GitHub Pages. It reads and writes JSON throug
 - Upcoming, past and cancelled event views with search and filters
 - Flexible event creation (only a name is required)
 - One event workspace for details, funding sources, speakers, poster Drive links, venue, partner organisations, committee attendance and preparation checklist
+- Committee task management with assignees, event links, due dates, priorities, progress statuses and member filtering
 - Reusable committee and organisation directories with inactive/archive states
 - Stable record IDs and retained historical records
 - Explicit shared-save status, retryable errors, loading and empty states
@@ -33,6 +34,7 @@ Google Sheet
   ├─ Speakers
   ├─ Event_Speakers
   ├─ Event_Posters
+  ├─ Event_Tasks
   ├─ Committee
   ├─ Event_Attendance
   ├─ Organisations
@@ -67,8 +69,8 @@ Do not manually create tabs or columns. The supplied setup function does it cons
 1. In the function selector at the top of Apps Script, select `setupSpreadsheet`.
 2. Click **Run**.
 3. Google will ask for permission to edit the Sheet. Choose the Sheet owner's account, review the requested access, and allow it.
-4. Return to the Sheet. It should now contain the eleven tabs listed above, each with a dark-blue header row.
-5. The execution result should say that eleven data tabs were created or verified.
+4. Return to the Sheet. It should now contain the twelve tabs listed above, each with a dark-blue header row.
+5. The execution result should say that twelve data tabs were created or verified.
 
 The function is safe to run again: it reuses existing tabs and does not erase data. It stores the Sheet ID in Apps Script's private Script Properties, not in this repository.
 
@@ -131,8 +133,11 @@ Then open the GitHub Pages site. The yellow “not connected” notice should be
 11. Change the event name or notes, save, refresh and confirm the edit persists.
 12. Open the Pages URL in a different browser or private session and confirm the same event loads.
 13. Set its date in the past (or status to **Completed**) and confirm it remains under **Events → Past**.
+14. Add a task, assign it to a committee member and link it to Test Event.
+15. Change its status from the Tasks tab and verify the update persists after refresh.
+16. Delete the test task and confirm it is removed.
 
-Automated checks cover readiness calculations and event classification. Steps involving the live Google deployment must be run after the Sheet owner authorizes Apps Script.
+Automated checks cover readiness calculations, event classification, task relationships and stable IDs. Steps involving the live Google deployment must be run after the Sheet owner authorizes Apps Script.
 
 ## Updating the API
 
