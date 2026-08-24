@@ -27,6 +27,25 @@ function toast(message, type = '') {
   setTimeout(() => el.remove(), 3500);
 }
 
+function cacheEventDetail(detail) {
+  if (!state.bootstrap || !detail?.event) return;
+  const event = detail.event;
+  const fundingStatuses = ['Confirmed', 'Pending', 'No', 'N/A'];
+  const fundingStatus = fundingStatuses.find(status => (detail.funding || []).some(row => row.status === status)) || (event.funding_required === 'No' ? 'N/A' : 'Not started');
+  const lead = (state.bootstrap.committee || []).find(member => member.member_id === event.lead_organiser_id);
+  const summary = {
+    ...event,
+    progress: progressFor(detail),
+    funding_status: fundingStatus,
+    speaker_summary: speakerSummary(detail.speakers || []),
+    room_status: detail.venue?.booking_status || (event.room_required === 'No' ? 'Not required' : 'Not started'),
+    committee_confirmed: (detail.attendance || []).filter(row => row.attendance_status === 'Confirmed attending').length,
+    lead_organiser_name: lead?.name || '',
+    organisation_ids: (detail.organisations || []).map(row => row.organisation_id)
+  };
+  state.bootstrap.events = (state.bootstrap.events || []).filter(row => row.event_id !== event.event_id).concat(summary);
+}
+
 function setActiveNav(routeName) {
   document.querySelectorAll('[data-route]').forEach(link => link.classList.toggle('active', link.dataset.route === routeName));
   nav.classList.remove('open');
@@ -161,7 +180,8 @@ function openEventDialog() {
     const button = dialog.querySelector('#create-event'); button.disabled = true; button.textContent = 'Saving…';
     try {
       const saved = await api.saveEvent(formObject(event.currentTarget));
-      await ensureBootstrap(true); dialog.close(); toast('Event created and saved.'); location.hash = `#/event/${saved.event_id}`;
+      cacheEventDetail({ event: saved, funding: [], speakers: [], venue: {}, organisations: [], attendance: [], checklist: [] });
+      dialog.close(); toast('Event created and saved.'); location.hash = `#/event/${saved.event_id}`;
     } catch (error) { button.disabled = false; button.textContent = 'Create event'; dialog.querySelector('.save-state').textContent = error.message; dialog.querySelector('.save-state').classList.add('error'); }
   });
 }
@@ -272,7 +292,7 @@ function wireDetailForm() {
     button.disabled = true; button.textContent = 'Saving…'; saveState.textContent = 'Saving to shared sheet…'; saveState.classList.remove('error');
     try {
       const payload = { event: { ...formObject(form), event_id: state.event.event.event_id }, funding: collectRows('funding'), speakers: collectRows('speaker'), posters: collectRows('poster'), venue: collectRows('venue')[0] || {}, organisations: collectRows('organisation'), attendance: collectRows('attendance'), checklist: collectRows('checklist') };
-      state.event = await api.saveEventDetail(payload); form.dataset.dirty = 'false'; saveState.textContent = 'Saved'; toast('All changes saved to the shared sheet.'); await ensureBootstrap(true);
+      state.event = await api.saveEventDetail(payload); cacheEventDetail(state.event); form.dataset.dirty = 'false'; saveState.textContent = 'Saved'; toast('All changes saved to the shared sheet.');
     } catch (error) { saveState.textContent = `Error saving — ${error.message}`; saveState.classList.add('error'); }
     finally { button.disabled = false; button.textContent = 'Save all changes'; }
   });
@@ -305,8 +325,14 @@ function openDirectoryDialog(kind, record = {}) {
     event.preventDefault(); event.submitter.disabled = true;
     try {
       const data = { ...record, ...formObject(event.currentTarget) };
-      if (isMember) await api.saveCommittee(data); else await api.saveOrganisation(data);
-      await ensureBootstrap(true); dialog.close(); toast('Saved to the shared sheet.'); isMember ? renderCommittee() : renderOrganisations();
+      const saved = isMember ? await api.saveCommittee(data) : await api.saveOrganisation(data);
+      if (isMember) {
+        state.bootstrap.committee = (state.bootstrap.committee || []).filter(row => row.member_id !== saved.member_id).concat(saved);
+        state.bootstrap.events = (state.bootstrap.events || []).map(row => row.lead_organiser_id === saved.member_id ? { ...row, lead_organiser_name: saved.name } : row);
+      } else {
+        state.bootstrap.organisations = (state.bootstrap.organisations || []).filter(row => row.organisation_id !== saved.organisation_id).concat(saved);
+      }
+      dialog.close(); toast('Saved to the shared sheet.'); isMember ? renderCommittee() : renderOrganisations();
     } catch (error) { event.submitter.disabled = false; dialog.querySelector('.save-state').textContent = error.message; dialog.querySelector('.save-state').classList.add('error'); }
   });
 }

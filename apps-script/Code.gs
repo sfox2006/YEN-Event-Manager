@@ -88,11 +88,10 @@ function handleRequest_(params, body) {
 }
 
 function getBootstrap_() {
-  const committee = readTable_('Committee');
-  const organisations = readTable_('Organisations');
-  const events = readTable_('Events').map(function (event) {
-    const detail = getEventDetailFromTables_(event, committee, organisations);
-    const lead = committee.find(function (member) { return member.member_id === event.lead_organiser_id; });
+  const tables = readTables_(Object.keys(SCHEMA));
+  const events = tables.Events.map(function (event) {
+    const detail = buildEventDetail_(event, tables);
+    const lead = tables.Committee.find(function (member) { return member.member_id === event.lead_organiser_id; });
     const confirmed = detail.attendance.filter(function (row) { return row.attendance_status === 'Confirmed attending'; }).length;
     const fundingStatus = detail.funding.length ? bestStatus_(detail.funding.map(function (row) { return row.status; }), ['Confirmed', 'Pending', 'No', 'N/A']) : (event.funding_required === 'No' ? 'N/A' : 'Not started');
     const activeSpeakers = detail.speakers.filter(function (row) { return ['Declined', 'Withdrawn'].indexOf(row.invitation_status) === -1; });
@@ -107,108 +106,116 @@ function getBootstrap_() {
       organisation_ids: detail.organisations.map(function (row) { return row.organisation_id; })
     });
   });
-  return { events: events, committee: committee, organisations: organisations };
+  return { events: events, committee: tables.Committee, organisations: tables.Organisations };
 }
 
 function getEventDetail_(eventId) {
   if (!eventId) throw new Error('event_id is required.');
-  const event = readTable_('Events').find(function (row) { return row.event_id === eventId; });
+  const tables = readTables_(Object.keys(SCHEMA));
+  const event = tables.Events.find(function (row) { return row.event_id === eventId; });
   if (!event) throw new Error('Event not found.');
-  return getEventDetailFromTables_(event, readTable_('Committee'), readTable_('Organisations'));
+  return buildEventDetail_(event, tables);
 }
 
-function getEventDetailFromTables_(event, committee, organisations) {
+function buildEventDetail_(event, tables) {
   const eventId = event.event_id;
-  const speakers = readTable_('Speakers');
-  const links = readTable_('Event_Speakers').filter(function (row) { return row.event_id === eventId; });
+  const links = tables.Event_Speakers.filter(function (row) { return row.event_id === eventId; });
   const speakerDetails = links.map(function (link) {
-    const speaker = speakers.find(function (row) { return row.speaker_id === link.speaker_id; }) || {};
+    const speaker = tables.Speakers.find(function (row) { return row.speaker_id === link.speaker_id; }) || {};
     return Object.assign({}, speaker, link);
   });
-  const orgLinks = readTable_('Event_Organisations').filter(function (row) { return row.event_id === eventId; });
+  const orgLinks = tables.Event_Organisations.filter(function (row) { return row.event_id === eventId; });
   const eventOrganisations = orgLinks.map(function (link) {
-    const organisation = organisations.find(function (row) { return row.organisation_id === link.organisation_id; }) || {};
+    const organisation = tables.Organisations.find(function (row) { return row.organisation_id === link.organisation_id; }) || {};
     return Object.assign({}, organisation, link);
   });
   return {
     event: event,
     speakers: speakerDetails,
-    posters: readTable_('Event_Posters').filter(function (row) { return row.event_id === eventId; }),
-    funding: readTable_('Funding').filter(function (row) { return row.event_id === eventId; }),
-    venue: readTable_('Venues').find(function (row) { return row.event_id === eventId; }) || {},
+    posters: tables.Event_Posters.filter(function (row) { return row.event_id === eventId; }),
+    funding: tables.Funding.filter(function (row) { return row.event_id === eventId; }),
+    venue: tables.Venues.find(function (row) { return row.event_id === eventId; }) || {},
     organisations: eventOrganisations,
-    attendance: readTable_('Event_Attendance').filter(function (row) { return row.event_id === eventId; }),
-    checklist: readTable_('Event_Checklist').filter(function (row) { return row.event_id === eventId; })
+    attendance: tables.Event_Attendance.filter(function (row) { return row.event_id === eventId; }),
+    checklist: tables.Event_Checklist.filter(function (row) { return row.event_id === eventId; })
   };
 }
 
 function saveEvent_(event) {
   if (!String(event.event_name || '').trim()) throw new Error('Event name is required.');
+  const spreadsheet = getSpreadsheet_();
+  const events = readTableFromSheet_(getSheet_('Events', spreadsheet), 'Events');
   const now = new Date().toISOString();
   event.event_id = event.event_id || makeId_('event');
-  event.created_at = event.created_at || now;
-  event.updated_at = now;
-  upsert_('Events', event);
-  return readTable_('Events').find(function (row) { return row.event_id === event.event_id; });
+  const saved = upsertInMemory_('Events', events, event, now);
+  writeTable_('Events', events, spreadsheet);
+  return saved;
 }
 
 function saveEventDetail_(payload) {
-  const event = saveEvent_(payload.event || {});
+  const spreadsheet = getSpreadsheet_();
+  const tables = readTables_(Object.keys(SCHEMA), spreadsheet);
+  const now = new Date().toISOString();
+  const eventInput = payload.event || {};
+  if (!String(eventInput.event_name || '').trim()) throw new Error('Event name is required.');
+  eventInput.event_id = eventInput.event_id || makeId_('event');
+  const event = upsertInMemory_('Events', tables.Events, eventInput, now);
   const eventId = event.event_id;
+  writeTable_('Events', tables.Events, spreadsheet);
 
-  syncEventRows_('Funding', eventId, payload.funding || [], function (row) {
-    row.funding_id = row.funding_id || makeId_('funding'); return row;
-  });
+  tables.Funding = replaceEventRowsInMemory_('Funding', tables.Funding, eventId, payload.funding || [], 'funding', now);
+  writeTable_('Funding', tables.Funding, spreadsheet);
 
   const speakerLinks = (payload.speakers || []).filter(function (row) { return String(row.name || '').trim(); }).map(function (row) {
     const speaker = {
       speaker_id: row.speaker_id || makeId_('speaker'), name: row.name, organisation_name: row.organisation_name,
       title: row.title, email: row.email, notes: row.notes
     };
-    upsertWithTimestamps_('Speakers', speaker);
+    upsertInMemory_('Speakers', tables.Speakers, speaker, now);
     return { event_speaker_id: row.event_speaker_id || makeId_('event_speaker'), event_id: eventId, speaker_id: speaker.speaker_id, invitation_status: row.invitation_status, notes: row.notes };
   });
-  syncEventRows_('Event_Speakers', eventId, speakerLinks);
+  writeTable_('Speakers', tables.Speakers, spreadsheet);
+  tables.Event_Speakers = replaceEventRowsInMemory_('Event_Speakers', tables.Event_Speakers, eventId, speakerLinks, 'event_speaker', now);
+  writeTable_('Event_Speakers', tables.Event_Speakers, spreadsheet);
 
-  syncEventRows_('Event_Posters', eventId, (payload.posters || []).filter(function (row) {
+  tables.Event_Posters = replaceEventRowsInMemory_('Event_Posters', tables.Event_Posters, eventId, (payload.posters || []).filter(function (row) {
     return String(row.drive_url || '').trim() || String(row.title || '').trim();
-  }).map(function (row) {
-    row.poster_id = row.poster_id || makeId_('poster'); return row;
-  }));
+  }), 'poster', now);
+  writeTable_('Event_Posters', tables.Event_Posters, spreadsheet);
 
   const venue = payload.venue || {};
-  if (Object.keys(venue).length) {
-    venue.venue_id = venue.venue_id || makeId_('venue'); venue.event_id = eventId;
-    upsertWithTimestamps_('Venues', venue);
-    removeEventRowsExcept_('Venues', eventId, [venue.venue_id]);
-  } else removeEventRowsExcept_('Venues', eventId, []);
+  tables.Venues = replaceEventRowsInMemory_('Venues', tables.Venues, eventId, Object.keys(venue).length ? [venue] : [], 'venue', now);
+  writeTable_('Venues', tables.Venues, spreadsheet);
 
-  syncEventRows_('Event_Organisations', eventId, (payload.organisations || []).filter(function (row) { return row.organisation_id; }).map(function (row) {
-    row.event_organisation_id = row.event_organisation_id || makeId_('event_organisation'); return row;
-  }));
-  syncEventRows_('Event_Attendance', eventId, (payload.attendance || []).map(function (row) {
-    row.attendance_id = row.attendance_id || makeId_('attendance'); return row;
-  }));
-  syncEventRows_('Event_Checklist', eventId, (payload.checklist || []).map(function (row) {
-    row.checklist_id = row.checklist_id || makeId_('checklist'); return row;
-  }));
-  return getEventDetail_(eventId);
+  tables.Event_Organisations = replaceEventRowsInMemory_('Event_Organisations', tables.Event_Organisations, eventId, (payload.organisations || []).filter(function (row) { return row.organisation_id; }), 'event_organisation', now);
+  writeTable_('Event_Organisations', tables.Event_Organisations, spreadsheet);
+  tables.Event_Attendance = replaceEventRowsInMemory_('Event_Attendance', tables.Event_Attendance, eventId, payload.attendance || [], 'attendance', now);
+  writeTable_('Event_Attendance', tables.Event_Attendance, spreadsheet);
+  tables.Event_Checklist = replaceEventRowsInMemory_('Event_Checklist', tables.Event_Checklist, eventId, payload.checklist || [], 'checklist', now);
+  writeTable_('Event_Checklist', tables.Event_Checklist, spreadsheet);
+  return buildEventDetail_(event, tables);
 }
 
 function saveCommittee_(member) {
   if (!String(member.name || '').trim()) throw new Error('Committee member name is required.');
+  const spreadsheet = getSpreadsheet_();
+  const rows = readTableFromSheet_(getSheet_('Committee', spreadsheet), 'Committee');
   member.member_id = member.member_id || makeId_('member');
   if (member.active === undefined || member.active === '') member.active = 'true';
-  upsertWithTimestamps_('Committee', member);
-  return readTable_('Committee').find(function (row) { return row.member_id === member.member_id; });
+  const saved = upsertInMemory_('Committee', rows, member, new Date().toISOString());
+  writeTable_('Committee', rows, spreadsheet);
+  return saved;
 }
 
 function saveOrganisation_(organisation) {
   if (!String(organisation.organisation_name || '').trim()) throw new Error('Organisation name is required.');
+  const spreadsheet = getSpreadsheet_();
+  const rows = readTableFromSheet_(getSheet_('Organisations', spreadsheet), 'Organisations');
   organisation.organisation_id = organisation.organisation_id || makeId_('organisation');
   if (organisation.active === undefined || organisation.active === '') organisation.active = 'true';
-  upsertWithTimestamps_('Organisations', organisation);
-  return readTable_('Organisations').find(function (row) { return row.organisation_id === organisation.organisation_id; });
+  const saved = upsertInMemory_('Organisations', rows, organisation, new Date().toISOString());
+  writeTable_('Organisations', rows, spreadsheet);
+  return saved;
 }
 
 function progressFor_(detail) {
@@ -224,54 +231,46 @@ function progressFor_(detail) {
   return checks.length ? Math.round(checks.filter(Boolean).length / checks.length * 100) : 0;
 }
 
-function syncEventRows_(table, eventId, rows, transform) {
-  const idField = ID_FIELDS[table];
-  const ids = [];
-  rows.forEach(function (input) {
-    const row = Object.assign({}, input, { event_id: eventId });
-    if (transform) transform(row);
-    if (!row[idField]) row[idField] = makeId_(table.toLowerCase());
-    upsertWithTimestamps_(table, row); ids.push(row[idField]);
-  });
-  removeEventRowsExcept_(table, eventId, ids);
-}
-
-function removeEventRowsExcept_(table, eventId, keepIds) {
-  const sheet = getSheet_(table);
-  const rows = readTable_(table);
-  const idField = ID_FIELDS[table];
-  const deleteNumbers = [];
-  rows.forEach(function (row, index) {
-    if (row.event_id === eventId && keepIds.indexOf(row[idField]) === -1) deleteNumbers.push(index + 2);
-  });
-  deleteNumbers.sort(function (a, b) { return b - a; }).forEach(function (rowNumber) { sheet.deleteRow(rowNumber); });
-}
-
-function upsertWithTimestamps_(table, record) {
-  const now = new Date().toISOString();
-  const existing = readTable_(table).find(function (row) { return row[ID_FIELDS[table]] === record[ID_FIELDS[table]]; });
-  record.created_at = (existing && existing.created_at) || record.created_at || now;
-  record.updated_at = now;
-  upsert_(table, record);
-}
-
-function upsert_(table, record) {
-  const headers = SCHEMA[table];
+function upsertInMemory_(table, rows, record, now) {
   const idField = ID_FIELDS[table];
   const id = String(record[idField] || '');
   if (!id) throw new Error(idField + ' is required.');
-  const sheet = getSheet_(table);
-  const values = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getDisplayValues() : [];
-  const idIndex = headers.indexOf(idField);
-  const rowIndex = values.findIndex(function (row) { return row[idIndex] === id; });
-  const existing = rowIndex >= 0 ? values[rowIndex] : headers.map(function () { return ''; });
-  const output = headers.map(function (header, index) { return record[header] === undefined ? existing[index] : record[header]; });
-  if (rowIndex >= 0) sheet.getRange(rowIndex + 2, 1, 1, headers.length).setValues([output]);
-  else sheet.appendRow(output);
+  const index = rows.findIndex(function (row) { return row[idField] === id; });
+  const existing = index >= 0 ? rows[index] : {};
+  const saved = Object.assign({}, existing, record, {
+    created_at: existing.created_at || record.created_at || now,
+    updated_at: now
+  });
+  if (index >= 0) rows[index] = saved; else rows.push(saved);
+  return saved;
 }
 
-function readTable_(name) {
-  const sheet = getSheet_(name);
+function replaceEventRowsInMemory_(table, rows, eventId, incoming, idPrefix, now) {
+  const idField = ID_FIELDS[table];
+  const existingById = {};
+  rows.forEach(function (row) { existingById[row[idField]] = row; });
+  const replacements = incoming.map(function (input) {
+    const record = Object.assign({}, input, { event_id: eventId });
+    record[idField] = record[idField] || makeId_(idPrefix);
+    const existing = existingById[record[idField]] || {};
+    return Object.assign({}, existing, record, {
+      created_at: existing.created_at || record.created_at || now,
+      updated_at: now
+    });
+  });
+  return rows.filter(function (row) { return row.event_id !== eventId; }).concat(replacements);
+}
+
+function readTables_(names, spreadsheet) {
+  const book = spreadsheet || getSpreadsheet_();
+  const tables = {};
+  names.forEach(function (name) {
+    tables[name] = readTableFromSheet_(getSheet_(name, book), name);
+  });
+  return tables;
+}
+
+function readTableFromSheet_(sheet, name) {
   const headers = SCHEMA[name];
   if (sheet.getLastRow() < 2) return [];
   return sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getDisplayValues().map(function (row) {
@@ -279,8 +278,21 @@ function readTable_(name) {
   });
 }
 
-function getSheet_(name) {
-  const sheet = getSpreadsheet_().getSheetByName(name);
+function writeTable_(name, rows, spreadsheet) {
+  const sheet = getSheet_(name, spreadsheet);
+  const headers = SCHEMA[name];
+  const existingRows = Math.max(sheet.getLastRow() - 1, 0);
+  if (existingRows) sheet.getRange(2, 1, existingRows, headers.length).clearContent();
+  if (rows.length) {
+    const values = rows.map(function (record) {
+      return headers.map(function (header) { return record[header] === undefined ? '' : record[header]; });
+    });
+    sheet.getRange(2, 1, values.length, headers.length).setValues(values);
+  }
+}
+
+function getSheet_(name, spreadsheet) {
+  const sheet = (spreadsheet || getSpreadsheet_()).getSheetByName(name);
   if (!sheet) throw new Error('Missing sheet tab: ' + name + '. Run setupSpreadsheet().');
   return sheet;
 }
