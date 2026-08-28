@@ -11,6 +11,7 @@ The browser interface is hosted by GitHub Pages. It reads and writes JSON throug
 - Flexible event creation (only a name is required)
 - One event workspace for details, funding sources, speakers, poster Drive links, venue, partner organisations, committee attendance and preparation checklist
 - Committee task management with assignees, event links, due dates, priorities, progress statuses and member filtering
+- Meeting management with dates, times, locations, online links, organisers, attendees, agendas, notes and status tracking
 - Reusable committee and organisation directories with inactive/archive states
 - Stable record IDs and retained historical records
 - Explicit shared-save status, retryable errors, loading and empty states
@@ -35,6 +36,7 @@ Google Sheet
   ├─ Event_Speakers
   ├─ Event_Posters
   ├─ Event_Tasks
+  ├─ Meetings
   ├─ Committee
   ├─ Event_Attendance
   ├─ Organisations
@@ -136,6 +138,8 @@ Then open the GitHub Pages site. The yellow “not connected” notice should be
 14. Add a task, assign it to a committee member and link it to Test Event.
 15. Change its status from the Tasks tab and verify the update persists after refresh.
 16. Delete the test task and confirm it is removed.
+17. Add a meeting with a date, organiser and online link, then refresh and verify it remains.
+18. Edit its status and notes, then delete the test meeting.
 
 Automated checks cover readiness calculations, event classification, task relationships and stable IDs. Steps involving the live Google deployment must be run after the Sheet owner authorizes Apps Script.
 
@@ -144,9 +148,10 @@ Automated checks cover readiness calculations, event classification, task relati
 Editing `Code.gs` does not automatically update an existing web-app deployment.
 
 1. Copy the new `Code.gs` into Apps Script and save.
-2. Choose **Deploy → Manage deployments**.
-3. Edit the active deployment, select **New version**, add a description and deploy.
-4. Keep the same `/exec` URL unless you deliberately create a separate deployment.
+2. Run `setupSpreadsheet()` when the schema has changed. The Meetings update requires this once so the new `Meetings` tab is created.
+3. Choose **Deploy → Manage deployments**.
+4. Edit the active deployment, select **New version**, add a description and deploy.
+5. Keep the same `/exec` URL unless you deliberately create a separate deployment.
 
 ## Current security model
 

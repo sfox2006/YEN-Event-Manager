@@ -9,6 +9,7 @@ const SCHEMA = {
   Event_Speakers: ['event_speaker_id', 'event_id', 'speaker_id', 'invitation_status', 'notes', 'created_at', 'updated_at'],
   Event_Posters: ['poster_id', 'event_id', 'title', 'drive_url', 'status', 'notes', 'created_at', 'updated_at'],
   Event_Tasks: ['task_id', 'event_id', 'task_name', 'description', 'assignee_member_id', 'due_date', 'priority', 'status', 'notes', 'created_at', 'updated_at'],
+  Meetings: ['meeting_id', 'meeting_name', 'meeting_type', 'date', 'start_time', 'end_time', 'location', 'meeting_link', 'organiser_member_id', 'status', 'attendees', 'agenda', 'notes', 'created_at', 'updated_at'],
   Committee: ['member_id', 'name', 'role', 'organisation_id', 'email', 'active', 'created_at', 'updated_at'],
   Event_Attendance: ['attendance_id', 'event_id', 'member_id', 'attendance_status', 'event_role', 'notes', 'created_at', 'updated_at'],
   Organisations: ['organisation_id', 'organisation_name', 'acronym', 'contact_name', 'contact_email', 'notes', 'active', 'created_at', 'updated_at'],
@@ -20,7 +21,7 @@ const SCHEMA = {
 
 const ID_FIELDS = {
   Events: 'event_id', Speakers: 'speaker_id', Event_Speakers: 'event_speaker_id',
-  Event_Posters: 'poster_id', Event_Tasks: 'task_id', Committee: 'member_id', Event_Attendance: 'attendance_id', Organisations: 'organisation_id',
+  Event_Posters: 'poster_id', Event_Tasks: 'task_id', Meetings: 'meeting_id', Committee: 'member_id', Event_Attendance: 'attendance_id', Organisations: 'organisation_id',
   Event_Organisations: 'event_organisation_id', Funding: 'funding_id', Venues: 'venue_id',
   Event_Checklist: 'checklist_id'
 };
@@ -81,6 +82,8 @@ function handleRequest_(params, body) {
     if (action === 'saveEventDetail') return withLock_(function () { return json_({ ok: true, data: saveEventDetail_(body || {}) }); });
     if (action === 'saveCommittee') return withLock_(function () { return json_({ ok: true, data: saveCommittee_(body.member || {}) }); });
     if (action === 'saveOrganisation') return withLock_(function () { return json_({ ok: true, data: saveOrganisation_(body.organisation || {}) }); });
+    if (action === 'saveMeeting') return withLock_(function () { return json_({ ok: true, data: saveMeeting_(body.meeting || {}) }); });
+    if (action === 'deleteMeeting') return withLock_(function () { return json_({ ok: true, data: deleteMeeting_(body.meeting_id) }); });
     if (action === 'saveTask') return withLock_(function () { return json_({ ok: true, data: saveTask_(body.task || {}) }); });
     if (action === 'deleteTask') return withLock_(function () { return json_({ ok: true, data: deleteTask_(body.task_id) }); });
     return json_({ ok: false, error: 'Unknown API action: ' + action });
@@ -109,7 +112,7 @@ function getBootstrap_() {
       organisation_ids: detail.organisations.map(function (row) { return row.organisation_id; })
     });
   });
-  return { events: events, committee: tables.Committee, organisations: tables.Organisations, tasks: tables.Event_Tasks };
+  return { events: events, committee: tables.Committee, organisations: tables.Organisations, meetings: tables.Meetings, tasks: tables.Event_Tasks };
 }
 
 function getEventDetail_(eventId) {
@@ -232,6 +235,28 @@ function saveTask_(task) {
   const saved = upsertInMemory_('Event_Tasks', rows, task, new Date().toISOString());
   writeTable_('Event_Tasks', rows, spreadsheet);
   return saved;
+}
+
+function saveMeeting_(meeting) {
+  if (!String(meeting.meeting_name || '').trim()) throw new Error('Meeting title is required.');
+  const spreadsheet = getSpreadsheet_();
+  const rows = readTableFromSheet_(getSheet_('Meetings', spreadsheet), 'Meetings');
+  meeting.meeting_id = meeting.meeting_id || makeId_('meeting');
+  meeting.status = meeting.status || 'Scheduled';
+  meeting.meeting_type = meeting.meeting_type || 'Committee meeting';
+  const saved = upsertInMemory_('Meetings', rows, meeting, new Date().toISOString());
+  writeTable_('Meetings', rows, spreadsheet);
+  return saved;
+}
+
+function deleteMeeting_(meetingId) {
+  if (!meetingId) throw new Error('meeting_id is required.');
+  const spreadsheet = getSpreadsheet_();
+  const rows = readTableFromSheet_(getSheet_('Meetings', spreadsheet), 'Meetings');
+  const remaining = rows.filter(function (row) { return row.meeting_id !== meetingId; });
+  if (remaining.length === rows.length) throw new Error('Meeting not found.');
+  writeTable_('Meetings', remaining, spreadsheet);
+  return { meeting_id: meetingId };
 }
 
 function deleteTask_(taskId) {

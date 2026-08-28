@@ -3,6 +3,8 @@ export const STATUSES = {
   attendance: ['Confirmed attending', 'Likely attending', 'Awaiting response', 'Not attending', 'Not asked'],
   speaker: ['Not contacted', 'Invitation to be sent', 'Invited', 'Follow-up required', 'Confirmed', 'Declined', 'Withdrawn'],
   poster: ['Draft requested', 'In progress', 'Ready for review', 'Approved', 'Published', 'Not required'],
+  meeting: ['Scheduled', 'Completed', 'Cancelled'],
+  meetingType: ['Committee meeting', 'Planning meeting', 'Event debrief', 'Partner meeting', 'Other'],
   task: ['Not started', 'In progress', 'Blocked', 'Complete'],
   priority: ['Low', 'Normal', 'High', 'Urgent'],
   room: ['Not started', 'Requested', 'Tentatively booked', 'Confirmed', 'Not required'],
@@ -42,6 +44,13 @@ export function eventBucket(event, today = new Date()) {
   if (!event.date) return 'upcoming';
   const eventDate = new Date(`${event.date}T23:59:59`);
   return eventDate < today ? 'past' : 'upcoming';
+}
+
+export function meetingBucket(meeting, today = new Date()) {
+  if (meeting.status === 'Cancelled') return 'cancelled';
+  if (meeting.status === 'Completed') return 'past';
+  if (!meeting.date) return 'upcoming';
+  return new Date(`${meeting.date}T23:59:59`) < today ? 'past' : 'upcoming';
 }
 
 export function progressFor(detail) {

@@ -1,10 +1,10 @@
 import { api, isConfigured } from './api.js';
-import { STATUSES, CHECKLIST_ITEMS, escapeHtml, formatDate, eventBucket, progressFor, speakerSummary, attendanceSummary, statusTone, formObject, optionList } from './utils.js';
+import { STATUSES, CHECKLIST_ITEMS, escapeHtml, formatDate, eventBucket, meetingBucket, progressFor, speakerSummary, attendanceSummary, statusTone, formObject, optionList } from './utils.js';
 
 const app = document.querySelector('#app');
 const nav = document.querySelector('#main-nav');
 const navToggle = document.querySelector('.nav-toggle');
-const state = { bootstrap: null, event: null, filter: 'upcoming', taskMemberFilter: '' };
+const state = { bootstrap: null, event: null, filter: 'upcoming', meetingFilter: 'upcoming', taskMemberFilter: '' };
 
 const badge = value => `<span class="badge badge-${statusTone(value)}">${escapeHtml(value || 'Not set')}</span>`;
 const uid = prefix => `${prefix}_${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
@@ -75,13 +75,14 @@ async function route() {
   setActiveNav(routeName === 'event' ? 'events' : routeName);
   loading();
   if (!isConfigured()) {
-    state.bootstrap ||= { events: [], committee: [], organisations: [], tasks: [] };
+    state.bootstrap ||= { events: [], committee: [], organisations: [], meetings: [], tasks: [] };
   } else {
     try { await ensureBootstrap(); } catch (error) { errorView(error); return; }
   }
   try {
     if (routeName === 'events') renderEvents();
     else if (routeName === 'event' && id) await renderEventDetail(id);
+    else if (routeName === 'meetings') renderMeetings();
     else if (routeName === 'tasks') renderTasks();
     else if (routeName === 'committee') renderCommittee();
     else if (routeName === 'organisations') renderOrganisations();
@@ -98,6 +99,7 @@ function renderDashboard() {
   const openTasks = (state.bootstrap.tasks || []).filter(task => task.status !== 'Complete');
   const today = new Date().toISOString().slice(0, 10);
   const overdueTasks = openTasks.filter(task => task.due_date && task.due_date < today);
+  const upcomingMeetings = (state.bootstrap.meetings || []).filter(meeting => meetingBucket(meeting) === 'upcoming').sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
   app.innerHTML = `${configNotice()}
     <header class="page-header"><div><h1>Dashboard</h1><p>Where are we at with each event?</p></div><div class="header-actions"><button class="btn btn-primary" id="add-event">+ Add Event</button></div></header>
     <section class="summary-grid" aria-label="Event summary">
@@ -107,9 +109,13 @@ function renderDashboard() {
       <div class="metric"><strong>${events.reduce((sum, e) => sum + Number(e.committee_confirmed || 0), 0)}</strong><span>Confirmed attendances</span></div>
       <div class="metric"><strong>${openTasks.length}</strong><span>Open committee tasks</span></div>
       <div class="metric"><strong>${overdueTasks.length}</strong><span>Overdue tasks</span></div>
+      <div class="metric"><strong>${upcomingMeetings.length}</strong><span>Upcoming meetings</span></div>
     </section>
     <section class="panel"><div class="panel-header"><h2>Upcoming events</h2><a href="#/events">View all events</a></div>
       ${events.length ? eventTable(events) : `<div class="empty-state"><h2>No upcoming events yet</h2><p>Create an event to start tracking preparations.</p><button class="btn btn-primary" id="empty-add-event">+ Add Event</button></div>`}
+    </section>
+    <section class="panel"><div class="panel-header"><h2>Next meetings</h2><a href="#/meetings">View all meetings</a></div>
+      ${upcomingMeetings.length ? meetingTable(upcomingMeetings.slice(0, 5), false) : `<div class="empty-state"><h2>No meetings scheduled</h2><p>Add a committee meeting to keep everyone aligned.</p><a class="btn btn-primary" href="#/meetings">Go to meetings</a></div>`}
     </section>`;
   document.querySelector('#add-event')?.addEventListener('click', openEventDialog);
   document.querySelector('#empty-add-event')?.addEventListener('click', openEventDialog);
@@ -260,6 +266,87 @@ function checklistFields(rows) {
   const groups = [...new Set(all.map(row => row.item_type))];
   const registration = `<div class="form-grid cols-3"><label class="field-span">Registration link<input name="registration_link" type="url" value="${escapeHtml(state.event.event.registration_link)}" placeholder="https://…"></label><label>Current registrations<input name="registration_numbers" type="number" min="0" value="${escapeHtml(state.event.event.registration_numbers)}"></label><label>Registration capacity<input name="registration_capacity" type="number" min="0" value="${escapeHtml(state.event.event.registration_capacity)}"></label></div>`;
   return registration + groups.map(group => `<div class="checklist-group"><h3>${escapeHtml(group)}</h3>${all.filter(row => row.item_type === group).map(row => `<div class="checklist-row" data-kind="checklist" data-id="${escapeHtml(row.checklist_id)}" data-type="${escapeHtml(row.item_type)}" data-name="${escapeHtml(row.item_name)}"><strong>${escapeHtml(row.item_name)}</strong><select data-field="status">${optionList(STATUSES.checklist, row.status)}</select><input data-field="notes" value="${escapeHtml(row.notes)}" placeholder="Notes (optional)"></div>`).join('')}</div>`).join('');
+}
+
+function cacheMeeting(meeting) {
+  state.bootstrap.meetings = (state.bootstrap.meetings || []).filter(row => row.meeting_id !== meeting.meeting_id).concat(meeting);
+}
+
+function removeCachedMeeting(meetingId) {
+  state.bootstrap.meetings = (state.bootstrap.meetings || []).filter(row => row.meeting_id !== meetingId);
+}
+
+function renderMeetings() {
+  const meetings = state.bootstrap.meetings || [];
+  const upcoming = meetings.filter(meeting => meetingBucket(meeting) === 'upcoming');
+  const today = new Date().toISOString().slice(0, 10);
+  app.innerHTML = `${configNotice()}<header class="page-header"><div><h1>Meetings</h1><p>Schedule committee meetings and keep agendas, links and notes together.</p></div><button class="btn btn-primary" id="add-meeting">+ Add meeting</button></header>
+    <section class="summary-grid meeting-summary" aria-label="Meeting summary"><div class="metric"><strong>${upcoming.length}</strong><span>Upcoming</span></div><div class="metric"><strong>${upcoming.filter(meeting => meeting.date === today).length}</strong><span>Today</span></div><div class="metric"><strong>${meetings.filter(meeting => meeting.status === 'Completed').length}</strong><span>Completed</span></div><div class="metric"><strong>${meetings.filter(meeting => meeting.status === 'Cancelled').length}</strong><span>Cancelled</span></div></section>
+    <div class="tabs" role="tablist">${['upcoming', 'past', 'cancelled'].map(tab => `<button data-meeting-filter="${tab}" class="${state.meetingFilter === tab ? 'active' : ''}">${tab[0].toUpperCase() + tab.slice(1)}</button>`).join('')}</div>
+    <div class="toolbar meeting-toolbar"><label>Search<input id="meeting-search" type="search" placeholder="Search meetings"></label><label>Meeting type<select id="meeting-type-filter"><option value="">All meeting types</option>${optionList(STATUSES.meetingType)}</select></label><label>Organiser<select id="meeting-organiser-filter"><option value="">All organisers</option>${(state.bootstrap.committee || []).map(member => `<option value="${member.member_id}">${escapeHtml(member.name)}</option>`).join('')}</select></label><label>Status<select id="meeting-status-filter"><option value="">All statuses</option>${optionList(STATUSES.meeting)}</select></label></div>
+    <section class="panel" id="meeting-list"></section>`;
+  const update = () => {
+    const search = document.querySelector('#meeting-search').value.toLowerCase();
+    const type = document.querySelector('#meeting-type-filter').value;
+    const organiser = document.querySelector('#meeting-organiser-filter').value;
+    const status = document.querySelector('#meeting-status-filter').value;
+    const filtered = meetings.filter(meeting => meetingBucket(meeting) === state.meetingFilter && `${meeting.meeting_name || ''} ${meeting.location || ''} ${meeting.agenda || ''}`.toLowerCase().includes(search) && (!type || meeting.meeting_type === type) && (!organiser || meeting.organiser_member_id === organiser) && (!status || meeting.status === status));
+    document.querySelector('#meeting-list').innerHTML = filtered.length ? meetingTable(filtered) : `<div class="empty-state"><h2>No matching meetings</h2><p>Add a meeting or adjust the filters.</p></div>`;
+    wireMeetingRows();
+  };
+  document.querySelector('#add-meeting').addEventListener('click', () => openMeetingDialog());
+  document.querySelectorAll('[data-meeting-filter]').forEach(button => button.addEventListener('click', () => { state.meetingFilter = button.dataset.meetingFilter; renderMeetings(); }));
+  ['#meeting-search', '#meeting-type-filter', '#meeting-organiser-filter', '#meeting-status-filter'].forEach(selector => document.querySelector(selector).addEventListener('input', update));
+  update();
+}
+
+function meetingTable(meetings, includeActions = true) {
+  const members = state.bootstrap.committee || [];
+  const sorted = [...meetings].sort((a, b) => {
+    const direction = state.meetingFilter === 'past' ? -1 : 1;
+    return direction * `${a.date || '9999'} ${a.start_time || ''}`.localeCompare(`${b.date || '9999'} ${b.start_time || ''}`);
+  });
+  return `<div class="table-wrap"><table class="responsive"><thead><tr><th>Meeting</th><th>Date & time</th><th>Location / link</th><th>Organiser</th><th>Status</th>${includeActions ? '<th>Actions</th>' : ''}</tr></thead><tbody>${sorted.map(meeting => {
+    const organiser = members.find(member => member.member_id === meeting.organiser_member_id);
+    const link = /^https:\/\//.test(meeting.meeting_link || '') ? `<a href="${escapeHtml(meeting.meeting_link)}" target="_blank" rel="noopener noreferrer">Join meeting ↗</a>` : '';
+    const status = includeActions ? `<select class="meeting-status-select" data-meeting-status="${escapeHtml(meeting.meeting_id)}">${optionList(STATUSES.meeting, meeting.status || 'Scheduled')}</select>` : badge(meeting.status || 'Scheduled');
+    return `<tr><td data-label="Meeting"><strong>${escapeHtml(meeting.meeting_name)}</strong><div class="subtle">${escapeHtml(meeting.meeting_type || 'Committee meeting')}</div></td><td data-label="Date & time">${formatDate(meeting.date)}<div class="subtle">${escapeHtml(meeting.start_time || 'Time TBC')}${meeting.end_time ? `–${escapeHtml(meeting.end_time)}` : ''}</div></td><td data-label="Location / link">${escapeHtml(meeting.location || 'Not set')}${link ? `<div class="subtle">${link}</div>` : ''}</td><td data-label="Organiser">${escapeHtml(organiser?.name || 'Unassigned')}</td><td data-label="Status">${status}</td>${includeActions ? `<td data-label="Actions"><div class="row-actions"><button class="btn btn-secondary" data-edit-meeting="${escapeHtml(meeting.meeting_id)}">Edit</button><button class="btn btn-danger" data-delete-meeting="${escapeHtml(meeting.meeting_id)}">Delete</button></div></td>` : ''}</tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
+function wireMeetingRows() {
+  document.querySelectorAll('[data-meeting-status]').forEach(select => select.addEventListener('change', async () => {
+    const meeting = (state.bootstrap.meetings || []).find(row => row.meeting_id === select.dataset.meetingStatus);
+    if (!meeting) return;
+    const previous = meeting.status; select.disabled = true;
+    try { const saved = await api.saveMeeting({ ...meeting, status: select.value }); cacheMeeting(saved); toast('Meeting status saved.'); }
+    catch (error) { select.value = previous; toast(error.message, 'error'); }
+    finally { select.disabled = false; }
+  }));
+  document.querySelectorAll('[data-edit-meeting]').forEach(button => button.addEventListener('click', () => {
+    const meeting = (state.bootstrap.meetings || []).find(row => row.meeting_id === button.dataset.editMeeting);
+    if (meeting) openMeetingDialog(meeting);
+  }));
+  document.querySelectorAll('[data-delete-meeting]').forEach(button => button.addEventListener('click', async () => {
+    const meeting = (state.bootstrap.meetings || []).find(row => row.meeting_id === button.dataset.deleteMeeting);
+    if (!meeting || !window.confirm(`Delete the meeting “${meeting.meeting_name}”? This cannot be undone.`)) return;
+    button.disabled = true;
+    try { await api.deleteMeeting(meeting.meeting_id); removeCachedMeeting(meeting.meeting_id); toast('Meeting deleted.'); renderMeetings(); }
+    catch (error) { button.disabled = false; toast(error.message, 'error'); }
+  }));
+}
+
+function openMeetingDialog(record = {}) {
+  const dialog = document.createElement('dialog');
+  const members = state.bootstrap.committee || [];
+  dialog.innerHTML = `<form method="dialog"><div class="dialog-header"><h2>${record.meeting_id ? 'Edit meeting' : 'Add meeting'}</h2><button class="icon-btn" value="cancel" aria-label="Close">✕</button></div><div class="dialog-body"><div class="form-grid cols-3"><label class="field-span">Meeting title<input name="meeting_name" required value="${escapeHtml(record.meeting_name)}" placeholder="Monthly committee meeting"></label><label>Meeting type<select name="meeting_type">${optionList(STATUSES.meetingType, record.meeting_type || 'Committee meeting')}</select></label><label>Status<select name="status">${optionList(STATUSES.meeting, record.status || 'Scheduled')}</select></label><label>Organiser<select name="organiser_member_id"><option value="">Unassigned</option>${members.map(member => `<option value="${member.member_id}" ${member.member_id === record.organiser_member_id ? 'selected' : ''}>${escapeHtml(member.name)}${String(member.active).toLowerCase() === 'false' ? ' (inactive)' : ''}</option>`).join('')}</select></label><label>Date<input name="date" type="date" value="${escapeHtml(record.date)}"></label><label>Start time<input name="start_time" type="time" value="${escapeHtml(record.start_time)}"></label><label>End time<input name="end_time" type="time" value="${escapeHtml(record.end_time)}"></label><label class="field-span">Location<input name="location" value="${escapeHtml(record.location)}" placeholder="Room name, building or Online"></label><label class="field-span">Online meeting link<input name="meeting_link" type="url" value="${escapeHtml(record.meeting_link)}" placeholder="https://…"></label><label class="field-span">Attendees<input name="attendees" value="${escapeHtml(record.attendees)}" placeholder="Names or groups expected to attend"></label><label class="field-span">Agenda<textarea name="agenda" placeholder="Topics to discuss">${escapeHtml(record.agenda)}</textarea></label><label class="field-span">Meeting notes<textarea name="notes" placeholder="Decisions, actions and follow-up notes">${escapeHtml(record.notes)}</textarea></label></div><div class="form-actions"><span class="save-state"></span><button class="btn btn-secondary" value="cancel">Cancel</button><button class="btn btn-primary" value="save">Save meeting</button></div></div></form>`;
+  document.body.append(dialog); dialog.showModal(); dialog.addEventListener('close', () => dialog.remove());
+  dialog.querySelector('form').addEventListener('submit', async event => {
+    if (event.submitter.value === 'cancel') return;
+    event.preventDefault(); event.submitter.disabled = true; event.submitter.textContent = 'Saving…';
+    try { const saved = await api.saveMeeting({ ...record, ...formObject(event.currentTarget) }); cacheMeeting(saved); dialog.close(); toast('Meeting saved.'); renderMeetings(); }
+    catch (error) { event.submitter.disabled = false; event.submitter.textContent = 'Save meeting'; dialog.querySelector('.save-state').textContent = error.message; dialog.querySelector('.save-state').classList.add('error'); }
+  });
 }
 
 function eventTaskFields(tasks, eventId) {
