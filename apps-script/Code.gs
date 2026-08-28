@@ -9,7 +9,7 @@ const SCHEMA = {
   Event_Speakers: ['event_speaker_id', 'event_id', 'speaker_id', 'invitation_status', 'notes', 'created_at', 'updated_at'],
   Event_Posters: ['poster_id', 'event_id', 'title', 'drive_url', 'status', 'notes', 'created_at', 'updated_at'],
   Event_Tasks: ['task_id', 'event_id', 'task_name', 'description', 'assignee_member_id', 'due_date', 'priority', 'status', 'notes', 'created_at', 'updated_at'],
-  Meetings: ['meeting_id', 'meeting_name', 'meeting_type', 'date', 'start_time', 'end_time', 'location', 'meeting_link', 'organiser_member_id', 'status', 'attendees', 'agenda', 'notes', 'created_at', 'updated_at'],
+  Meetings: ['meeting_id', 'meeting_name', 'meeting_type', 'date', 'start_time', 'end_time', 'location', 'meeting_link', 'organiser_member_id', 'organisation_id', 'external_organisation', 'status', 'attendees', 'agenda', 'notes', 'created_at', 'updated_at'],
   Committee: ['member_id', 'name', 'role', 'organisation_id', 'email', 'active', 'created_at', 'updated_at'],
   Event_Attendance: ['attendance_id', 'event_id', 'member_id', 'attendance_status', 'event_role', 'notes', 'created_at', 'updated_at'],
   Organisations: ['organisation_id', 'organisation_name', 'acronym', 'contact_name', 'contact_email', 'notes', 'active', 'created_at', 'updated_at'],
@@ -242,8 +242,8 @@ function saveMeeting_(meeting) {
   const spreadsheet = getSpreadsheet_();
   const rows = readTableFromSheet_(getSheet_('Meetings', spreadsheet), 'Meetings');
   meeting.meeting_id = meeting.meeting_id || makeId_('meeting');
-  meeting.status = meeting.status || 'Scheduled';
-  meeting.meeting_type = meeting.meeting_type || 'Committee meeting';
+  meeting.status = meeting.status || 'Planned';
+  meeting.meeting_type = meeting.meeting_type || 'Executive meeting';
   const saved = upsertInMemory_('Meetings', rows, meeting, new Date().toISOString());
   writeTable_('Meetings', rows, spreadsheet);
   return saved;

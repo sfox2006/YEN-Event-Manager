@@ -12,10 +12,10 @@ test('past, upcoming and cancelled events are classified without deleting histor
 
 test('meetings are classified as upcoming, past or cancelled', () => {
   const now = new Date('2026-08-24T12:00:00');
-  assert.equal(meetingBucket({ date: '2026-08-25', status: 'Scheduled' }, now), 'upcoming');
-  assert.equal(meetingBucket({ date: '2026-08-23', status: 'Scheduled' }, now), 'past');
+  assert.equal(meetingBucket({ date: '2026-08-25', status: 'Planned' }, now), 'upcoming');
+  assert.equal(meetingBucket({ date: '2026-08-23', status: 'Planned' }, now), 'past');
   assert.equal(meetingBucket({ date: '2026-08-25', status: 'Cancelled' }, now), 'cancelled');
-  assert.equal(meetingBucket({ date: '', status: 'Scheduled' }, now), 'upcoming');
+  assert.equal(meetingBucket({ date: '', status: 'Planned' }, now), 'upcoming');
 });
 
 test('speaker summary derives confirmed count from individual records', () => {

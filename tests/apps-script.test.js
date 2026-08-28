@@ -73,7 +73,7 @@ test('task schema supports assignment and progress tracking', () => {
 test('meeting schema supports scheduling, links and notes', () => {
   const context = contextFor();
   const headers = vm.runInContext('SCHEMA.Meetings', context);
-  for (const field of ['meeting_id', 'meeting_name', 'date', 'start_time', 'meeting_link', 'organiser_member_id', 'status', 'agenda', 'notes']) {
+  for (const field of ['meeting_id', 'meeting_name', 'meeting_type', 'date', 'start_time', 'meeting_link', 'organiser_member_id', 'organisation_id', 'external_organisation', 'status', 'agenda', 'notes']) {
     assert.ok(headers.includes(field));
   }
 });
