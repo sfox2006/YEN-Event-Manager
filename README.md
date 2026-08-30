@@ -9,6 +9,7 @@ The browser interface is hosted by GitHub Pages. It reads and writes JSON throug
 - Dashboard with readiness percentage, funding, speaker, venue and attendance summaries
 - Upcoming, past and cancelled event views with search and filters
 - Flexible event creation (only a name is required)
+- Permanent event deletion with automatic cleanup of all event-linked records
 - One event workspace for details, funding sources, speakers, poster Drive links, venue, partner organisations, committee attendance and preparation checklist
 - Committee task management with assignees, event links, due dates, priorities, progress statuses and member filtering
 - Executive meeting management for internal meetings and meetings with other organisations, including dates, times, locations, online links, organisers, attendees, agendas, decisions and status tracking
@@ -140,6 +141,7 @@ Then open the GitHub Pages site. The yellow “not connected” notice should be
 16. Delete the test task and confirm it is removed.
 17. Add a meeting with a date, organiser and online link, then refresh and verify it remains.
 18. Edit its status and notes, then delete the test meeting.
+19. Create a disposable event, use **Permanently delete event**, and verify it and its linked records no longer appear after refresh.
 
 Automated checks cover readiness calculations, event classification, task relationships and stable IDs. Steps involving the live Google deployment must be run after the Sheet owner authorizes Apps Script.
 

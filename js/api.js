@@ -43,6 +43,7 @@ export const api = {
   getEvent: eventId => request('event', { params: { event_id: eventId } }),
   saveEvent: event => request('saveEvent', { method: 'POST', data: { event } }),
   saveEventDetail: payload => request('saveEventDetail', { method: 'POST', data: payload }),
+  deleteEvent: eventId => request('deleteEvent', { method: 'POST', data: { event_id: eventId } }),
   saveCommittee: member => request('saveCommittee', { method: 'POST', data: { member } }),
   saveOrganisation: organisation => request('saveOrganisation', { method: 'POST', data: { organisation } }),
   saveMeeting: meeting => request('saveMeeting', { method: 'POST', data: { meeting } }),

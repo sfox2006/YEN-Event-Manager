@@ -77,3 +77,31 @@ test('meeting schema supports scheduling, links and notes', () => {
     assert.ok(headers.includes(field));
   }
 });
+
+test('permanent event deletion removes linked records but preserves other events and shared speakers', () => {
+  const tables = {
+    Events: [{ event_id: 'event_1' }, { event_id: 'event_2' }],
+    Speakers: [{ speaker_id: 'only_event_1' }, { speaker_id: 'shared' }, { speaker_id: 'only_event_2' }],
+    Event_Speakers: [
+      { event_speaker_id: 'link_1', event_id: 'event_1', speaker_id: 'only_event_1' },
+      { event_speaker_id: 'link_2', event_id: 'event_1', speaker_id: 'shared' },
+      { event_speaker_id: 'link_3', event_id: 'event_2', speaker_id: 'shared' },
+      { event_speaker_id: 'link_4', event_id: 'event_2', speaker_id: 'only_event_2' }
+    ],
+    Event_Posters: [{ poster_id: 'remove', event_id: 'event_1' }, { poster_id: 'keep', event_id: 'event_2' }],
+    Event_Tasks: [{ task_id: 'remove', event_id: 'event_1' }, { task_id: 'keep', event_id: 'event_2' }],
+    Event_Attendance: [{ attendance_id: 'remove', event_id: 'event_1' }],
+    Event_Organisations: [{ event_organisation_id: 'remove', event_id: 'event_1' }],
+    Funding: [{ funding_id: 'remove', event_id: 'event_1' }],
+    Venues: [{ venue_id: 'remove', event_id: 'event_1' }],
+    Event_Checklist: [{ checklist_id: 'remove', event_id: 'event_1' }]
+  };
+  const context = contextFor({ tables });
+  vm.runInContext("deleteEventFromTables_(tables, 'event_1')", context);
+  assert.deepEqual(tables.Events.map(row => row.event_id), ['event_2']);
+  assert.deepEqual(tables.Event_Tasks.map(row => row.task_id), ['keep']);
+  assert.deepEqual(tables.Event_Posters.map(row => row.poster_id), ['keep']);
+  assert.ok(!tables.Speakers.some(row => row.speaker_id === 'only_event_1'));
+  assert.ok(tables.Speakers.some(row => row.speaker_id === 'shared'));
+  for (const name of ['Event_Attendance', 'Event_Organisations', 'Funding', 'Venues', 'Event_Checklist']) assert.equal(tables[name].length, 0);
+});

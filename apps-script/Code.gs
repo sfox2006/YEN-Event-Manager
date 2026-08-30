@@ -80,6 +80,7 @@ function handleRequest_(params, body) {
     if (action === 'event') return json_({ ok: true, data: getEventDetail_(params.event_id) });
     if (action === 'saveEvent') return withLock_(function () { return json_({ ok: true, data: saveEvent_(body.event || {}) }); });
     if (action === 'saveEventDetail') return withLock_(function () { return json_({ ok: true, data: saveEventDetail_(body || {}) }); });
+    if (action === 'deleteEvent') return withLock_(function () { return json_({ ok: true, data: deleteEvent_(body.event_id) }); });
     if (action === 'saveCommittee') return withLock_(function () { return json_({ ok: true, data: saveCommittee_(body.member || {}) }); });
     if (action === 'saveOrganisation') return withLock_(function () { return json_({ ok: true, data: saveOrganisation_(body.organisation || {}) }); });
     if (action === 'saveMeeting') return withLock_(function () { return json_({ ok: true, data: saveMeeting_(body.meeting || {}) }); });
@@ -201,6 +202,31 @@ function saveEventDetail_(payload) {
   tables.Event_Checklist = replaceEventRowsInMemory_('Event_Checklist', tables.Event_Checklist, eventId, payload.checklist || [], 'checklist', now);
   writeTable_('Event_Checklist', tables.Event_Checklist, spreadsheet);
   return buildEventDetail_(event, tables);
+}
+
+function deleteEvent_(eventId) {
+  if (!eventId) throw new Error('event_id is required.');
+  const spreadsheet = getSpreadsheet_();
+  const tables = readTables_(Object.keys(SCHEMA), spreadsheet);
+  deleteEventFromTables_(tables, eventId);
+  ['Events', 'Speakers', 'Event_Speakers', 'Event_Posters', 'Event_Tasks', 'Event_Attendance', 'Event_Organisations', 'Funding', 'Venues', 'Event_Checklist'].forEach(function (name) {
+    writeTable_(name, tables[name], spreadsheet);
+  });
+  return { event_id: eventId };
+}
+
+function deleteEventFromTables_(tables, eventId) {
+  if (!tables.Events.some(function (row) { return row.event_id === eventId; })) throw new Error('Event not found.');
+  const linkedSpeakerIds = tables.Event_Speakers.filter(function (row) { return row.event_id === eventId; }).map(function (row) { return row.speaker_id; });
+  tables.Events = tables.Events.filter(function (row) { return row.event_id !== eventId; });
+  tables.Event_Speakers = tables.Event_Speakers.filter(function (row) { return row.event_id !== eventId; });
+  const stillLinkedSpeakerIds = {};
+  tables.Event_Speakers.forEach(function (row) { stillLinkedSpeakerIds[row.speaker_id] = true; });
+  tables.Speakers = tables.Speakers.filter(function (row) { return linkedSpeakerIds.indexOf(row.speaker_id) === -1 || stillLinkedSpeakerIds[row.speaker_id]; });
+  ['Event_Posters', 'Event_Tasks', 'Event_Attendance', 'Event_Organisations', 'Funding', 'Venues', 'Event_Checklist'].forEach(function (name) {
+    tables[name] = tables[name].filter(function (row) { return row.event_id !== eventId; });
+  });
+  return tables;
 }
 
 function saveCommittee_(member) {

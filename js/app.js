@@ -1,4 +1,4 @@
-import { api, isConfigured } from './api.js?v=20260828-executive-meetings';
+import { api, isConfigured } from './api.js?v=20260830-delete-event';
 import { STATUSES, CHECKLIST_ITEMS, escapeHtml, formatDate, eventBucket, meetingBucket, progressFor, speakerSummary, attendanceSummary, statusTone, formObject, optionList } from './utils.js?v=20260828-executive-meetings';
 
 const app = document.querySelector('#app');
@@ -203,7 +203,7 @@ async function renderEventDetail(id) {
   state.event = await api.getEvent(id);
   const d = state.event;
   const event = d.event;
-  app.innerHTML = `<header class="page-header"><div><a href="#/events">← All events</a><h1>${escapeHtml(event.event_name)}</h1><p>${formatDate(event.date)} · ${escapeHtml(event.start_time || 'Time TBC')} · ${escapeHtml(event.status)}</p></div><div class="header-actions">${badge(`${progressFor(d)}% ready`)}</div></header>
+  app.innerHTML = `<header class="page-header"><div><a href="#/events">← All events</a><h1>${escapeHtml(event.event_name)}</h1><p>${formatDate(event.date)} · ${escapeHtml(event.start_time || 'Time TBC')} · ${escapeHtml(event.status)}</p></div><div class="header-actions">${badge(`${progressFor(d)}% ready`)}<button class="btn btn-danger" type="button" id="delete-event">Permanently delete event</button></div></header>
     <div class="detail-layout"><form id="event-detail-form">
       ${panel('basic', 'Basic details', eventFields(event))}
       ${panel('funding', 'Funding', fundingFields(d.funding || []))}
@@ -218,6 +218,26 @@ async function renderEventDetail(id) {
     </form><aside class="detail-nav" aria-label="Event sections">${['basic','funding','speakers','posters','venue','organisations','attendance','event-tasks','checklist'].map(s => `<a href="#${s}">${s === 'event-tasks' ? 'Tasks' : s[0].toUpperCase()+s.slice(1)}</a>`).join('')}</aside></div>`;
   wireDetailForm();
   wireEventTaskPanel();
+  document.querySelector('#delete-event').addEventListener('click', deleteCurrentEvent);
+}
+
+async function deleteCurrentEvent() {
+  const event = state.event?.event;
+  if (!event || !window.confirm(`Permanently delete “${event.event_name}” and all of its linked records? This cannot be undone.`)) return;
+  const button = document.querySelector('#delete-event');
+  button.disabled = true; button.textContent = 'Deleting…';
+  try {
+    await api.deleteEvent(event.event_id);
+    state.bootstrap.events = (state.bootstrap.events || []).filter(row => row.event_id !== event.event_id);
+    state.bootstrap.tasks = (state.bootstrap.tasks || []).filter(row => row.event_id !== event.event_id);
+    document.querySelector('#event-detail-form').dataset.dirty = 'false';
+    state.event = null;
+    toast('Event and all linked records permanently deleted.');
+    location.hash = '#/events';
+  } catch (error) {
+    button.disabled = false; button.textContent = 'Permanently delete event';
+    toast(error.message, 'error');
+  }
 }
 
 function panel(id, title, body) { return `<section class="panel" id="${id}"><div class="panel-header"><h2>${title}</h2></div><div class="panel-body">${body}</div></section>`; }
