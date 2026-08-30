@@ -26,7 +26,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 a { color: var(--blue); }
 .app-header { min-height: 70px; background: var(--navy); color: white; display: flex; align-items: center; padding: 0 32px; gap: 30px; position: sticky; top: 0; z-index: 20; box-shadow: 0 2px 8px #0002; }
 .brand { color: white; text-decoration: none; display: flex; align-items: center; gap: 12px; margin-right: auto; }
-.brand-mark { display: grid; place-items: center; width: 42px; height: 42px; border: 2px solid #fff; border-radius: 8px; font-weight: 800; letter-spacing: -.04em; }
+.brand-logo { display: block; width: 50px; height: 58px; object-fit: contain; background: white; border-radius: 8px; padding: 2px; }
 .brand strong, .brand small { display: block; }
 .brand small { color: #c9d8e3; font-size: .75rem; }
 .main-nav { display: flex; align-self: stretch; }
@@ -138,6 +138,7 @@ dialog::backdrop { background: #10243899; }
 @media (max-width: 720px) {
   .app-header { padding: 10px 16px; min-height: 64px; flex-wrap: wrap; }
   .brand small { display: none; }
+  .brand-logo { width: 44px; height: 50px; }
   .nav-toggle { display: block; color: white; background: #ffffff12; border: 1px solid #ffffff55; border-radius: 6px; padding: 7px 10px; }
   .main-nav { display: none; width: 100%; flex-direction: column; padding-bottom: 8px; }
   .main-nav.open { display: flex; }
