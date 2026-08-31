@@ -12,6 +12,7 @@ The browser interface is hosted by GitHub Pages. It reads and writes JSON throug
 - Permanent event deletion with automatic cleanup of all event-linked records
 - One event workspace for details, funding sources, speakers, poster Drive links, venue, partner organisations, committee attendance and preparation checklist
 - Committee task management with assignees, event links, due dates, priorities, progress statuses and member filtering
+- Vertically grouped task sections ordered Not started, In progress, Blocked and Complete
 - Executive meeting management for internal meetings and meetings with other organisations, including dates, times, locations, online links, organisers, attendees, agendas, decisions and status tracking
 - Reusable committee and organisation directories with inactive/archive states
 - Stable record IDs and retained historical records

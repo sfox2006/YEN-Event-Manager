@@ -416,7 +416,7 @@ function renderTasks() {
     const eventId = document.querySelector('#task-event-filter').value;
     state.taskMemberFilter = member;
     const filtered = tasks.filter(task => task.task_name.toLowerCase().includes(search) && (!member || task.assignee_member_id === member) && (!status || task.status === status) && (!eventId || (eventId === 'none' ? !task.event_id : task.event_id === eventId)));
-    document.querySelector('#task-list').innerHTML = filtered.length ? taskTable(filtered) : `<div class="empty-state"><h2>No matching tasks</h2><p>Add a task or adjust the filters.</p></div>`;
+    document.querySelector('#task-list').innerHTML = taskSections(filtered, status);
     wireTaskRows();
   };
   document.querySelector('#add-task').addEventListener('click', () => openTaskDialog());
@@ -424,11 +424,19 @@ function renderTasks() {
   update();
 }
 
+function taskSections(tasks, selectedStatus = '') {
+  const statuses = selectedStatus ? [selectedStatus] : STATUSES.task;
+  return statuses.map(status => {
+    const rows = tasks.filter(task => (task.status || 'Not started') === status);
+    return `<section class="task-status-section" data-task-section="${escapeHtml(status)}"><div class="task-status-header"><h2>${escapeHtml(status)}</h2><span>${rows.length} ${rows.length === 1 ? 'task' : 'tasks'}</span></div>${rows.length ? taskTable(rows) : `<div class="empty-inline">No ${escapeHtml(status.toLowerCase())} tasks.</div>`}</section>`;
+  }).join('');
+}
+
 function taskTable(tasks) {
   const members = state.bootstrap.committee || [];
   const events = state.bootstrap.events || [];
   const today = new Date().toISOString().slice(0, 10);
-  const sorted = [...tasks].sort((a, b) => (a.status === 'Complete') - (b.status === 'Complete') || (a.due_date || '9999').localeCompare(b.due_date || '9999'));
+  const sorted = [...tasks].sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999'));
   return `<div class="table-wrap"><table class="responsive"><thead><tr><th>Task</th><th>Event</th><th>Assigned to</th><th>Due</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead><tbody>${sorted.map(task => {
     const member = members.find(row => row.member_id === task.assignee_member_id);
     const event = events.find(row => row.event_id === task.event_id);
@@ -442,7 +450,7 @@ function wireTaskRows() {
     const task = (state.bootstrap.tasks || []).find(row => row.task_id === select.dataset.taskStatus);
     if (!task) return;
     const previous = task.status; select.disabled = true;
-    try { const saved = await api.saveTask({ ...task, status: select.value }); cacheTask(saved); toast('Task status saved.'); }
+    try { const saved = await api.saveTask({ ...task, status: select.value }); cacheTask(saved); toast('Task status saved.'); renderTasks(); }
     catch (error) { select.value = previous; toast(error.message, 'error'); }
     finally { select.disabled = false; }
   }));
