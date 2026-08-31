@@ -42,12 +42,15 @@ export const api = {
   getBootstrap: () => request('bootstrap'),
   getEvent: eventId => request('event', { params: { event_id: eventId } }),
   saveEvent: event => request('saveEvent', { method: 'POST', data: { event } }),
+  createEventWithAutomation: event => request('createEventWithAutomation', { method: 'POST', data: { event } }),
   saveEventDetail: payload => request('saveEventDetail', { method: 'POST', data: payload }),
   deleteEvent: eventId => request('deleteEvent', { method: 'POST', data: { event_id: eventId } }),
   saveCommittee: member => request('saveCommittee', { method: 'POST', data: { member } }),
   saveOrganisation: organisation => request('saveOrganisation', { method: 'POST', data: { organisation } }),
   saveMeeting: meeting => request('saveMeeting', { method: 'POST', data: { meeting } }),
   deleteMeeting: meetingId => request('deleteMeeting', { method: 'POST', data: { meeting_id: meetingId } }),
+  saveTaskTemplate: template => request('saveTaskTemplate', { method: 'POST', data: { template } }),
+  deleteTaskTemplate: templateId => request('deleteTaskTemplate', { method: 'POST', data: { template_id: templateId } }),
   saveTask: task => request('saveTask', { method: 'POST', data: { task } }),
   deleteTask: taskId => request('deleteTask', { method: 'POST', data: { task_id: taskId } })
 };

@@ -9,6 +9,9 @@ The browser interface is hosted by GitHub Pages. It reads and writes JSON throug
 - Dashboard with readiness percentage, funding, speaker, venue and attendance summaries
 - Upcoming, past and cancelled event views with search and filters
 - Flexible event creation (only a name is required)
+- Optional event-task automation with a deadline preview during event creation
+- A Settings area for reusable active/inactive preparation-task templates
+- Nineteen starter templates spanning planning, venues, speakers, publicity, registration, materials, final checks, event-day work and follow-up
 - Permanent event deletion with automatic cleanup of all event-linked records
 - One event workspace for details, funding sources, speakers, poster Drive links, venue, partner organisations, committee attendance and preparation checklist
 - Committee task management with assignees, event links, due dates, priorities, progress statuses and member filtering
@@ -38,6 +41,7 @@ Google Sheet
   ├─ Event_Speakers
   ├─ Event_Posters
   ├─ Event_Tasks
+  ├─ Task_Templates
   ├─ Meetings
   ├─ Committee
   ├─ Event_Attendance
@@ -73,10 +77,12 @@ Do not manually create tabs or columns. The supplied setup function does it cons
 1. In the function selector at the top of Apps Script, select `setupSpreadsheet`.
 2. Click **Run**.
 3. Google will ask for permission to edit the Sheet. Choose the Sheet owner's account, review the requested access, and allow it.
-4. Return to the Sheet. It should now contain the twelve tabs listed above, each with a dark-blue header row.
-5. The execution result should say that twelve data tabs were created or verified.
+4. Return to the Sheet. It should now contain the fourteen tabs listed above, each with a dark-blue header row.
+5. The execution result should say that fourteen data tabs were created or verified. On the first run it also reports that nineteen YEN starter task templates were added.
 
 The function is safe to run again: it reuses existing tabs and does not erase data. It stores the Sheet ID in Apps Script's private Script Properties, not in this repository.
+
+When the `Task_Templates` tab is empty, setup installs a one-time starter set. It reuses active assignees from matching existing YEN tasks such as Posters, Confirm speakers and Confirm food budget, then uses clear President/Secretary role matches where appropriate. Any responsibility that cannot be inferred safely remains Unassigned. Edit these assignments under **Settings** after deployment.
 
 ### 4. Deploy Apps Script as a web app
 
@@ -143,18 +149,47 @@ Then open the GitHub Pages site. The yellow “not connected” notice should be
 17. Add a meeting with a date, organiser and online link, then refresh and verify it remains.
 18. Edit its status and notes, then delete the test meeting.
 19. Create a disposable event, use **Permanently delete event**, and verify it and its linked records no longer appear after refresh.
+20. Open **Settings** and verify the starter templates appear. Add a test template, edit it, deactivate it, reactivate it and then delete it.
+21. Start a new event and confirm the **Create preparation tasks automatically** switch is optional. Turn it on, choose a date and check the preview shows each task's assignee, relative timing and calculated deadline.
+22. Create the event with automation. Confirm generated tasks appear both in the event and in the grouped Tasks page with an **Automated** label.
+23. Change the event date and accept the deadline-update prompt. Confirm incomplete automated tasks move by their original offsets, while manual tasks and completed automated tasks keep their existing deadlines.
+24. Deactivate or delete a template and confirm any tasks previously generated from it remain editable and can still be reassigned, completed or deleted.
 
-Automated checks cover readiness calculations, event classification, task relationships and stable IDs. Steps involving the live Google deployment must be run after the Sheet owner authorizes Apps Script.
+Automated checks cover readiness calculations, event classification, automation schema, relative deadlines, retry duplicate prevention, date recalculation, preservation of manual/completed tasks, task relationships and stable IDs. Steps involving the live Google deployment must be run after the Sheet owner authorizes Apps Script.
+
+## Optional event-task automation
+
+The Settings page stores reusable preparation tasks in the `Task_Templates` sheet. Each template has a task name, description, optional committee assignee, deadline offset, priority and active state. Negative offsets are before the event, `0` is the event date and positive offsets are after it.
+
+Creating an event manually remains the default. When **Create preparation tasks automatically** is enabled, the form requires an event date and previews all active templates before anything is saved. The backend saves the event and creates the generated tasks in one locked operation. Generated task IDs are deterministic for each event/template pair, so retrying the same request does not create duplicates.
+
+Generated tasks behave like normal event tasks. They retain `generated_from_template_id` and `due_date_offset_days`, display an **Automated** label, and can be edited, reassigned, completed or deleted. If the event date changes, the user can recalculate only incomplete generated tasks. Manual tasks and completed generated tasks are never recalculated. Deactivating or deleting a template does not remove tasks already generated from it. If the template's assigned member is inactive when an event is created, its task is generated as Unassigned.
+
+### Automation data structure
+
+`Task_Templates` contains:
+
+```text
+template_id, task_name, description, assignee_member_id, offset_days,
+priority, active, created_at, updated_at
+```
+
+`Event_Tasks` additionally contains:
+
+```text
+generated_from_template_id, due_date_offset_days
+```
 
 ## Updating the API
 
 Editing `Code.gs` does not automatically update an existing web-app deployment.
 
 1. Copy the new `Code.gs` into Apps Script and save.
-2. Run `setupSpreadsheet()` when the schema has changed. The Meetings update requires this once so the new `Meetings` tab is created.
+2. Run `setupSpreadsheet()` after copying this version. It creates `Task_Templates`, adds `generated_from_template_id` and `due_date_offset_days` to `Event_Tasks`, preserves all existing rows, and seeds the starter templates only when `Task_Templates` is empty.
 3. Choose **Deploy → Manage deployments**.
 4. Edit the active deployment, select **New version**, add a description and deploy.
 5. Keep the same `/exec` URL unless you deliberately create a separate deployment.
+6. Open the deployed `/exec?action=bootstrap` URL and confirm its JSON includes `task_templates`, then hard-refresh the GitHub Pages site.
 
 ## Current security model
 

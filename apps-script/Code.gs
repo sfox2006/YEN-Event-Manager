@@ -8,7 +8,8 @@ const SCHEMA = {
   Speakers: ['speaker_id', 'name', 'organisation_name', 'title', 'email', 'notes', 'created_at', 'updated_at'],
   Event_Speakers: ['event_speaker_id', 'event_id', 'speaker_id', 'invitation_status', 'notes', 'created_at', 'updated_at'],
   Event_Posters: ['poster_id', 'event_id', 'title', 'drive_url', 'status', 'notes', 'created_at', 'updated_at'],
-  Event_Tasks: ['task_id', 'event_id', 'task_name', 'description', 'assignee_member_id', 'due_date', 'priority', 'status', 'notes', 'created_at', 'updated_at'],
+  Event_Tasks: ['task_id', 'event_id', 'task_name', 'description', 'assignee_member_id', 'due_date', 'priority', 'status', 'notes', 'generated_from_template_id', 'due_date_offset_days', 'created_at', 'updated_at'],
+  Task_Templates: ['template_id', 'task_name', 'description', 'assignee_member_id', 'offset_days', 'priority', 'active', 'created_at', 'updated_at'],
   Meetings: ['meeting_id', 'meeting_name', 'meeting_type', 'date', 'start_time', 'end_time', 'location', 'meeting_link', 'organiser_member_id', 'organisation_id', 'external_organisation', 'status', 'attendees', 'agenda', 'notes', 'created_at', 'updated_at'],
   Committee: ['member_id', 'name', 'role', 'organisation_id', 'email', 'active', 'created_at', 'updated_at'],
   Event_Attendance: ['attendance_id', 'event_id', 'member_id', 'attendance_status', 'event_role', 'notes', 'created_at', 'updated_at'],
@@ -21,10 +22,32 @@ const SCHEMA = {
 
 const ID_FIELDS = {
   Events: 'event_id', Speakers: 'speaker_id', Event_Speakers: 'event_speaker_id',
-  Event_Posters: 'poster_id', Event_Tasks: 'task_id', Meetings: 'meeting_id', Committee: 'member_id', Event_Attendance: 'attendance_id', Organisations: 'organisation_id',
+  Event_Posters: 'poster_id', Event_Tasks: 'task_id', Task_Templates: 'template_id', Meetings: 'meeting_id', Committee: 'member_id', Event_Attendance: 'attendance_id', Organisations: 'organisation_id',
   Event_Organisations: 'event_organisation_id', Funding: 'funding_id', Venues: 'venue_id',
   Event_Checklist: 'checklist_id'
 };
+
+const DEFAULT_TASK_TEMPLATES = [
+  { template_id: 'template_default_event_plan', task_name: 'Agree event plan and approval', description: 'Confirm the event purpose, intended audience, format and committee approval.', offset_days: -90, priority: 'High', role_terms: ['president', 'chair'] },
+  { template_id: 'template_default_budget', task_name: 'Confirm food budget', description: 'Agree the event budget, funding sources and spending approvals.', offset_days: -60, priority: 'High', task_terms: ['budget', 'funding'], role_terms: ['president', 'treasurer'] },
+  { template_id: 'template_default_venue', task_name: 'Confirm venue and room booking', description: 'Book a suitable room and confirm capacity, access and venue arrangements.', offset_days: -60, priority: 'High' },
+  { template_id: 'template_default_speakers', task_name: 'Confirm speakers', description: 'Invite and confirm speakers, titles, organisations and contact details.', offset_days: -45, priority: 'High', task_terms: ['speaker'] },
+  { template_id: 'template_default_programme', task_name: 'Finalise event programme and run sheet', description: 'Confirm timings, introductions, speaker order, questions and responsibilities.', offset_days: -14, priority: 'High' },
+  { template_id: 'template_default_registration', task_name: 'Set up event registration', description: 'Create the registration link and confirm capacity and attendee information.', offset_days: -35, priority: 'High' },
+  { template_id: 'template_default_posters', task_name: 'Posters', description: 'Prepare and approve the event poster and save its Google Drive link in the event.', offset_days: -35, priority: 'High', task_terms: ['poster'] },
+  { template_id: 'template_default_publicity', task_name: 'Launch event publicity', description: 'Publish the event through YEN channels and partner organisations.', offset_days: -28, priority: 'High', task_terms: ['poster', 'publicity', 'promotion'] },
+  { template_id: 'template_default_academics', task_name: 'Spread poster to academics ahead of event', description: 'Share the approved poster with relevant academics and university contacts.', offset_days: -21, priority: 'Normal', task_terms: ['academics'] },
+  { template_id: 'template_default_attendees', task_name: 'Review registrations and attendee numbers', description: 'Check registrations against capacity and identify any attendee follow-up needed.', offset_days: -7, priority: 'Normal' },
+  { template_id: 'template_default_equipment', task_name: 'Confirm equipment and event materials', description: 'Check presentation equipment, microphones, signs and other event materials.', offset_days: -7, priority: 'High' },
+  { template_id: 'template_default_roles', task_name: 'Confirm committee attendance and event-day roles', description: 'Assign setup, welcome, registration, timekeeping and close-down responsibilities.', offset_days: -5, priority: 'High', role_terms: ['president', 'secretary'] },
+  { template_id: 'template_default_final_checks', task_name: 'Complete final event checks', description: 'Reconfirm venue, speakers, catering, registrations, publicity and the run sheet.', offset_days: -3, priority: 'Urgent' },
+  { template_id: 'template_default_reminder', task_name: 'Send final attendee reminder', description: 'Send attendees the final time, location, access details and registration information.', offset_days: -2, priority: 'Normal', role_terms: ['secretary'] },
+  { template_id: 'template_default_setup', task_name: 'Event-day setup and attendee check-in', description: 'Set up the venue and materials and manage attendee arrival and registration.', offset_days: 0, priority: 'Urgent' },
+  { template_id: 'template_default_delivery', task_name: 'Deliver event-day run sheet responsibilities', description: 'Complete assigned hosting, speaker support, timekeeping and close-down duties.', offset_days: 0, priority: 'Urgent' },
+  { template_id: 'template_default_follow_up', task_name: 'Send follow-up and thank-you messages', description: 'Thank speakers, partner organisations and attendees and share any agreed follow-up.', offset_days: 2, priority: 'Normal', role_terms: ['secretary'] },
+  { template_id: 'template_default_outcomes', task_name: 'Record attendance and event outcomes', description: 'Record final attendance, key outcomes, links and notes for committee records.', offset_days: 3, priority: 'Normal', role_terms: ['secretary'] },
+  { template_id: 'template_default_debrief', task_name: 'Hold event debrief', description: 'Review what worked, record lessons and agree any outstanding actions.', offset_days: 7, priority: 'Normal', role_terms: ['president', 'chair'] }
+];
 
 function setupSpreadsheet() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -57,7 +80,8 @@ function setupSpreadsheet() {
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#12304a').setFontColor('#ffffff');
     sheet.autoResizeColumns(1, headers.length);
   });
-  return 'Created/verified ' + Object.keys(SCHEMA).length + ' data tabs.';
+  const seeded = seedDefaultTaskTemplates_(spreadsheet);
+  return 'Created/verified ' + Object.keys(SCHEMA).length + ' data tabs.' + (seeded ? ' Added ' + seeded + ' starter task templates.' : '');
 }
 
 function doGet(e) {
@@ -79,12 +103,15 @@ function handleRequest_(params, body) {
     if (action === 'bootstrap') return json_({ ok: true, data: getBootstrap_() });
     if (action === 'event') return json_({ ok: true, data: getEventDetail_(params.event_id) });
     if (action === 'saveEvent') return withLock_(function () { return json_({ ok: true, data: saveEvent_(body.event || {}) }); });
+    if (action === 'createEventWithAutomation') return withLock_(function () { return json_({ ok: true, data: createEventWithAutomation_(body.event || {}) }); });
     if (action === 'saveEventDetail') return withLock_(function () { return json_({ ok: true, data: saveEventDetail_(body || {}) }); });
     if (action === 'deleteEvent') return withLock_(function () { return json_({ ok: true, data: deleteEvent_(body.event_id) }); });
     if (action === 'saveCommittee') return withLock_(function () { return json_({ ok: true, data: saveCommittee_(body.member || {}) }); });
     if (action === 'saveOrganisation') return withLock_(function () { return json_({ ok: true, data: saveOrganisation_(body.organisation || {}) }); });
     if (action === 'saveMeeting') return withLock_(function () { return json_({ ok: true, data: saveMeeting_(body.meeting || {}) }); });
     if (action === 'deleteMeeting') return withLock_(function () { return json_({ ok: true, data: deleteMeeting_(body.meeting_id) }); });
+    if (action === 'saveTaskTemplate') return withLock_(function () { return json_({ ok: true, data: saveTaskTemplate_(body.template || {}) }); });
+    if (action === 'deleteTaskTemplate') return withLock_(function () { return json_({ ok: true, data: deleteTaskTemplate_(body.template_id) }); });
     if (action === 'saveTask') return withLock_(function () { return json_({ ok: true, data: saveTask_(body.task || {}) }); });
     if (action === 'deleteTask') return withLock_(function () { return json_({ ok: true, data: deleteTask_(body.task_id) }); });
     return json_({ ok: false, error: 'Unknown API action: ' + action });
@@ -113,7 +140,7 @@ function getBootstrap_() {
       organisation_ids: detail.organisations.map(function (row) { return row.organisation_id; })
     });
   });
-  return { events: events, committee: tables.Committee, organisations: tables.Organisations, meetings: tables.Meetings, tasks: tables.Event_Tasks };
+  return { events: events, committee: tables.Committee, organisations: tables.Organisations, meetings: tables.Meetings, tasks: tables.Event_Tasks, task_templates: tables.Task_Templates };
 }
 
 function getEventDetail_(eventId) {
@@ -160,6 +187,26 @@ function saveEvent_(event) {
   return saved;
 }
 
+function createEventWithAutomation_(event) {
+  if (!String(event.event_name || '').trim()) throw new Error('Event name is required.');
+  if (!event.date) throw new Error('An event date is required to calculate automated task deadlines.');
+  const spreadsheet = getSpreadsheet_();
+  const events = readTableFromSheet_(getSheet_('Events', spreadsheet), 'Events');
+  const templates = readTableFromSheet_(getSheet_('Task_Templates', spreadsheet), 'Task_Templates');
+  const tasks = readTableFromSheet_(getSheet_('Event_Tasks', spreadsheet), 'Event_Tasks');
+  const committee = readTableFromSheet_(getSheet_('Committee', spreadsheet), 'Committee');
+  const activeTemplates = templates.filter(function (template) { return String(template.active).toLowerCase() !== 'false'; });
+  const activeMemberIds = committee.filter(function (member) { return String(member.active).toLowerCase() !== 'false'; }).map(function (member) { return member.member_id; });
+  if (!activeTemplates.length) throw new Error('No active task automation templates are configured.');
+  const now = new Date().toISOString();
+  event.event_id = event.event_id || makeId_('event');
+  const saved = upsertInMemory_('Events', events, event, now);
+  const generated = generateAutomatedTasksInMemory_(tasks, saved, activeTemplates, now, activeMemberIds);
+  writeTable_('Events', events, spreadsheet);
+  writeTable_('Event_Tasks', tasks, spreadsheet);
+  return { event: saved, tasks: generated };
+}
+
 function saveEventDetail_(payload) {
   const spreadsheet = getSpreadsheet_();
   const tables = readTables_(Object.keys(SCHEMA), spreadsheet);
@@ -167,6 +214,7 @@ function saveEventDetail_(payload) {
   const eventInput = payload.event || {};
   if (!String(eventInput.event_name || '').trim()) throw new Error('Event name is required.');
   eventInput.event_id = eventInput.event_id || makeId_('event');
+  const existingEvent = tables.Events.find(function (row) { return row.event_id === eventInput.event_id; }) || {};
   const event = upsertInMemory_('Events', tables.Events, eventInput, now);
   const eventId = event.event_id;
   writeTable_('Events', tables.Events, spreadsheet);
@@ -201,6 +249,10 @@ function saveEventDetail_(payload) {
   writeTable_('Event_Attendance', tables.Event_Attendance, spreadsheet);
   tables.Event_Checklist = replaceEventRowsInMemory_('Event_Checklist', tables.Event_Checklist, eventId, payload.checklist || [], 'checklist', now);
   writeTable_('Event_Checklist', tables.Event_Checklist, spreadsheet);
+  if (payload.update_automated_task_deadlines && event.date && event.date !== existingEvent.date) {
+    updateAutomatedTaskDeadlinesInMemory_(tables.Event_Tasks, eventId, event.date, now);
+    writeTable_('Event_Tasks', tables.Event_Tasks, spreadsheet);
+  }
   return buildEventDetail_(event, tables);
 }
 
@@ -251,6 +303,31 @@ function saveOrganisation_(organisation) {
   return saved;
 }
 
+function saveTaskTemplate_(template) {
+  if (!String(template.task_name || '').trim()) throw new Error('Template task name is required.');
+  const offset = Number(template.offset_days);
+  if (!Number.isInteger(offset) || offset < -3650 || offset > 3650) throw new Error('Timing must be a whole number between -3650 and 3650 days.');
+  const spreadsheet = getSpreadsheet_();
+  const rows = readTableFromSheet_(getSheet_('Task_Templates', spreadsheet), 'Task_Templates');
+  template.template_id = template.template_id || makeId_('template');
+  template.offset_days = String(offset);
+  template.priority = template.priority || 'Normal';
+  if (template.active === undefined || template.active === '') template.active = 'true';
+  const saved = upsertInMemory_('Task_Templates', rows, template, new Date().toISOString());
+  writeTable_('Task_Templates', rows, spreadsheet);
+  return saved;
+}
+
+function deleteTaskTemplate_(templateId) {
+  if (!templateId) throw new Error('template_id is required.');
+  const spreadsheet = getSpreadsheet_();
+  const rows = readTableFromSheet_(getSheet_('Task_Templates', spreadsheet), 'Task_Templates');
+  const remaining = rows.filter(function (row) { return row.template_id !== templateId; });
+  if (remaining.length === rows.length) throw new Error('Task template not found.');
+  writeTable_('Task_Templates', remaining, spreadsheet);
+  return { template_id: templateId };
+}
+
 function saveTask_(task) {
   if (!String(task.task_name || '').trim()) throw new Error('Task name is required.');
   const spreadsheet = getSpreadsheet_();
@@ -293,6 +370,92 @@ function deleteTask_(taskId) {
   if (remaining.length === rows.length) throw new Error('Task not found.');
   writeTable_('Event_Tasks', remaining, spreadsheet);
   return { task_id: taskId };
+}
+
+function generateAutomatedTasksInMemory_(tasks, event, templates, now, activeMemberIds) {
+  const generated = [];
+  templates.forEach(function (template) {
+    const existing = tasks.find(function (task) {
+      return task.event_id === event.event_id && task.generated_from_template_id === template.template_id;
+    });
+    if (existing) { generated.push(existing); return; }
+    const offset = Number(template.offset_days || 0);
+    const assigned = template.assignee_member_id && (!activeMemberIds || activeMemberIds.indexOf(template.assignee_member_id) !== -1) ? template.assignee_member_id : '';
+    const task = {
+      task_id: 'task_auto_' + event.event_id + '_' + template.template_id,
+      event_id: event.event_id,
+      task_name: template.task_name,
+      description: template.description,
+      assignee_member_id: assigned,
+      due_date: addDays_(event.date, offset),
+      priority: template.priority || 'Normal',
+      status: 'Not started',
+      notes: '',
+      generated_from_template_id: template.template_id,
+      due_date_offset_days: String(offset)
+    };
+    generated.push(upsertInMemory_('Event_Tasks', tasks, task, now));
+  });
+  return generated;
+}
+
+function updateAutomatedTaskDeadlinesInMemory_(tasks, eventId, eventDate, now) {
+  return tasks.filter(function (task) {
+    return task.event_id === eventId && task.generated_from_template_id && task.status !== 'Complete';
+  }).map(function (task) {
+    task.due_date = addDays_(eventDate, Number(task.due_date_offset_days || 0));
+    task.updated_at = now;
+    return task;
+  });
+}
+
+function addDays_(dateValue, offsetDays) {
+  const date = new Date(String(dateValue) + 'T00:00:00Z');
+  if (isNaN(date.getTime())) throw new Error('A valid event date is required.');
+  date.setUTCDate(date.getUTCDate() + Number(offsetDays || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+function seedDefaultTaskTemplates_(spreadsheet) {
+  const sheet = getSheet_('Task_Templates', spreadsheet);
+  if (sheet.getLastRow() >= 2) return 0;
+  const committee = readTableFromSheet_(getSheet_('Committee', spreadsheet), 'Committee');
+  const tasks = readTableFromSheet_(getSheet_('Event_Tasks', spreadsheet), 'Event_Tasks');
+  const now = new Date().toISOString();
+  const rows = DEFAULT_TASK_TEMPLATES.map(function (definition) {
+    return {
+      template_id: definition.template_id,
+      task_name: definition.task_name,
+      description: definition.description,
+      assignee_member_id: inferTemplateAssignee_(definition, tasks, committee),
+      offset_days: String(definition.offset_days),
+      priority: definition.priority,
+      active: 'true',
+      created_at: now,
+      updated_at: now
+    };
+  });
+  writeTable_('Task_Templates', rows, spreadsheet);
+  return rows.length;
+}
+
+function inferTemplateAssignee_(definition, tasks, committee) {
+  const activeIds = {};
+  committee.forEach(function (member) {
+    if (String(member.active).toLowerCase() !== 'false') activeIds[member.member_id] = true;
+  });
+  const taskTerms = definition.task_terms || [];
+  for (let index = tasks.length - 1; index >= 0; index -= 1) {
+    const task = tasks[index];
+    const name = String(task.task_name || '').toLowerCase();
+    if (task.assignee_member_id && activeIds[task.assignee_member_id] && taskTerms.some(function (term) { return name.indexOf(term) !== -1; })) return task.assignee_member_id;
+  }
+  const roleTerms = definition.role_terms || [];
+  const member = committee.find(function (row) {
+    const role = String(row.role || '').toLowerCase();
+    return activeIds[row.member_id] && roleTerms.some(function (term) { return role.indexOf(term) !== -1; });
+  });
+  return member ? member.member_id : '';
 }
 
 function progressFor_(detail) {

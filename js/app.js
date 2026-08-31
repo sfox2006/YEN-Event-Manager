@@ -1,5 +1,5 @@
-import { api, isConfigured } from './api.js?v=20260830-delete-event';
-import { STATUSES, CHECKLIST_ITEMS, escapeHtml, formatDate, eventBucket, meetingBucket, progressFor, speakerSummary, attendanceSummary, statusTone, formObject, optionList } from './utils.js?v=20260828-executive-meetings';
+import { api, isConfigured } from './api.js?v=20260831-task-automation';
+import { STATUSES, CHECKLIST_ITEMS, escapeHtml, formatDate, eventBucket, meetingBucket, dateByOffset, offsetLabel, progressFor, speakerSummary, attendanceSummary, statusTone, formObject, optionList } from './utils.js?v=20260831-task-automation';
 
 const app = document.querySelector('#app');
 const nav = document.querySelector('#main-nav');
@@ -75,7 +75,7 @@ async function route() {
   setActiveNav(routeName === 'event' ? 'events' : routeName);
   loading();
   if (!isConfigured()) {
-    state.bootstrap ||= { events: [], committee: [], organisations: [], meetings: [], tasks: [] };
+    state.bootstrap ||= { events: [], committee: [], organisations: [], meetings: [], tasks: [], task_templates: [] };
   } else {
     try { await ensureBootstrap(); } catch (error) { errorView(error); return; }
   }
@@ -86,6 +86,7 @@ async function route() {
     else if (routeName === 'tasks') renderTasks();
     else if (routeName === 'committee') renderCommittee();
     else if (routeName === 'organisations') renderOrganisations();
+    else if (routeName === 'settings') renderSettings();
     else renderDashboard();
     app.focus();
   } catch (error) { errorView(error); }
@@ -183,17 +184,43 @@ function eventFields(event = {}) {
 
 function openEventDialog() {
   const dialog = document.createElement('dialog');
-  dialog.innerHTML = `<form method="dialog" id="new-event-form"><div class="dialog-header"><h2>Add event</h2><button class="icon-btn" value="cancel" aria-label="Close">✕</button></div><div class="dialog-body">${eventFields()}<div class="form-actions"><span class="save-state">Only the event name is required.</span><button class="btn btn-secondary" value="cancel">Cancel</button><button class="btn btn-primary" value="default" id="create-event">Create event</button></div></div></form>`;
+  const eventId = uid('event');
+  const templates = (state.bootstrap.task_templates || []).filter(template => String(template.active).toLowerCase() !== 'false');
+  dialog.innerHTML = `<form method="dialog" id="new-event-form"><div class="dialog-header"><h2>Add event</h2><button class="icon-btn" value="cancel" aria-label="Close">✕</button></div><div class="dialog-body">${eventFields()}
+    <section class="automation-option"><label class="switch-row"><input id="automate-event-tasks" type="checkbox" ${templates.length ? '' : 'disabled'}><span><strong>Create preparation tasks automatically</strong><small>Use the active task templates and calculate deadlines from the event date.</small></span></label>
+      ${templates.length ? '' : '<p class="subtle">No active templates are configured. Add or reactivate templates under <a id="automation-settings-link" href="#/settings">Settings</a> first.</p>'}
+      <div id="automation-preview" class="automation-preview" hidden></div>
+    </section>
+    <div class="form-actions"><span class="save-state">Only the event name is required unless automation is switched on.</span><button class="btn btn-secondary" value="cancel">Cancel</button><button class="btn btn-primary" value="default" id="create-event">Create event</button></div></div></form>`;
   document.body.append(dialog); dialog.showModal();
   dialog.addEventListener('close', () => dialog.remove());
-  dialog.querySelector('#new-event-form').addEventListener('submit', async event => {
+  dialog.querySelector('#automation-settings-link')?.addEventListener('click', () => dialog.close());
+  const form = dialog.querySelector('#new-event-form');
+  const automationToggle = dialog.querySelector('#automate-event-tasks');
+  const preview = dialog.querySelector('#automation-preview');
+  const renderAutomationPreview = () => {
+    preview.hidden = !automationToggle.checked;
+    if (!automationToggle.checked) return;
+    const eventDate = form.querySelector('[name="date"]').value;
+    if (!eventDate) { preview.innerHTML = '<p class="subtle">Choose an event date to preview the task deadlines.</p>'; return; }
+    preview.innerHTML = `<h3>${templates.length} task${templates.length === 1 ? '' : 's'} will be created</h3><div class="automation-preview-list">${templates.map(template => {
+      const member = (state.bootstrap.committee || []).find(row => row.member_id === template.assignee_member_id && String(row.active).toLowerCase() !== 'false');
+      return `<div><strong>${escapeHtml(template.task_name)}</strong><span>${escapeHtml(member?.name || 'Unassigned')} · ${escapeHtml(offsetLabel(template.offset_days))} · ${formatDate(dateByOffset(eventDate, template.offset_days))}</span></div>`;
+    }).join('')}</div>`;
+  };
+  automationToggle.addEventListener('change', renderAutomationPreview);
+  form.querySelector('[name="date"]').addEventListener('input', renderAutomationPreview);
+  form.addEventListener('submit', async event => {
     if (event.submitter?.value === 'cancel') return;
     event.preventDefault();
     const button = dialog.querySelector('#create-event'); button.disabled = true; button.textContent = 'Saving…';
     try {
-      const saved = await api.saveEvent(formObject(event.currentTarget));
-      cacheEventDetail({ event: saved, funding: [], speakers: [], venue: {}, organisations: [], attendance: [], checklist: [] });
-      dialog.close(); toast('Event created and saved.'); location.hash = `#/event/${saved.event_id}`;
+      const eventData = { ...formObject(event.currentTarget), event_id: eventId };
+      if (automationToggle.checked && !eventData.date) throw new Error('Choose an event date before creating automated tasks.');
+      const result = automationToggle.checked ? await api.createEventWithAutomation(eventData) : { event: await api.saveEvent(eventData), tasks: [] };
+      (result.tasks || []).forEach(cacheTask);
+      cacheEventDetail({ event: result.event, funding: [], speakers: [], posters: [], venue: {}, organisations: [], attendance: [], checklist: [], tasks: result.tasks || [] });
+      dialog.close(); toast(automationToggle.checked ? `Event created with ${result.tasks.length} automated tasks.` : 'Event created and saved.'); location.hash = `#/event/${result.event.event_id}`;
     } catch (error) { button.disabled = false; button.textContent = 'Create event'; dialog.querySelector('.save-state').textContent = error.message; dialog.querySelector('.save-state').classList.add('error'); }
   });
 }
@@ -383,7 +410,7 @@ function eventTaskFields(tasks, eventId) {
 function taskCard(task) {
   const member = (state.bootstrap.committee || []).find(row => row.member_id === task.assignee_member_id);
   const overdue = task.status !== 'Complete' && task.due_date && task.due_date < new Date().toISOString().slice(0, 10);
-  return `<article class="task-card"><div><strong>${escapeHtml(task.task_name)}</strong><div class="subtle">${escapeHtml(member?.name || 'Unassigned')}${task.due_date ? ` · Due ${formatDate(task.due_date)}` : ''}</div></div><div>${badge(overdue ? 'Overdue' : task.status || 'Not started')}</div><button type="button" class="btn btn-secondary" data-edit-task="${escapeHtml(task.task_id)}">Edit</button></article>`;
+  return `<article class="task-card"><div><strong>${escapeHtml(task.task_name)}</strong>${task.generated_from_template_id ? '<span class="automation-label">Automated</span>' : ''}<div class="subtle">${escapeHtml(member?.name || 'Unassigned')}${task.due_date ? ` · Due ${formatDate(task.due_date)}` : ''}</div></div><div>${badge(overdue ? 'Overdue' : task.status || 'Not started')}</div><button type="button" class="btn btn-secondary" data-edit-task="${escapeHtml(task.task_id)}">Edit</button></article>`;
 }
 
 function cacheTask(task) {
@@ -441,7 +468,7 @@ function taskTable(tasks) {
     const member = members.find(row => row.member_id === task.assignee_member_id);
     const event = events.find(row => row.event_id === task.event_id);
     const overdue = task.status !== 'Complete' && task.due_date && task.due_date < today;
-    return `<tr data-task-row="${escapeHtml(task.task_id)}"><td data-label="Task"><strong>${escapeHtml(task.task_name)}</strong><div class="subtle">${escapeHtml(task.description || '')}</div></td><td data-label="Event">${escapeHtml(event?.event_name || 'General')}</td><td data-label="Assigned to">${escapeHtml(member?.name || 'Unassigned')}</td><td data-label="Due">${task.due_date ? formatDate(task.due_date) : 'No due date'}${overdue ? '<div class="subtle danger-text">Overdue</div>' : ''}</td><td data-label="Priority">${escapeHtml(task.priority || 'Normal')}</td><td data-label="Status"><select class="task-status-select" data-task-status="${escapeHtml(task.task_id)}">${optionList(STATUSES.task, task.status || 'Not started')}</select></td><td data-label="Actions"><div class="row-actions"><button class="btn btn-secondary" data-edit-task="${escapeHtml(task.task_id)}">Edit</button><button class="btn btn-danger" data-delete-task="${escapeHtml(task.task_id)}">Delete</button></div></td></tr>`;
+    return `<tr data-task-row="${escapeHtml(task.task_id)}"><td data-label="Task"><strong>${escapeHtml(task.task_name)}</strong>${task.generated_from_template_id ? '<span class="automation-label">Automated</span>' : ''}<div class="subtle">${escapeHtml(task.description || '')}</div></td><td data-label="Event">${escapeHtml(event?.event_name || 'General')}</td><td data-label="Assigned to">${escapeHtml(member?.name || 'Unassigned')}</td><td data-label="Due">${task.due_date ? formatDate(task.due_date) : 'No due date'}${overdue ? '<div class="subtle danger-text">Overdue</div>' : ''}</td><td data-label="Priority">${escapeHtml(task.priority || 'Normal')}</td><td data-label="Status"><select class="task-status-select" data-task-status="${escapeHtml(task.task_id)}">${optionList(STATUSES.task, task.status || 'Not started')}</select></td><td data-label="Actions"><div class="row-actions"><button class="btn btn-secondary" data-edit-task="${escapeHtml(task.task_id)}">Edit</button><button class="btn btn-danger" data-delete-task="${escapeHtml(task.task_id)}">Delete</button></div></td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -536,10 +563,72 @@ function wireDetailForm() {
     const button = document.querySelector('#save-event'); const saveState = document.querySelector('#save-state');
     button.disabled = true; button.textContent = 'Saving…'; saveState.textContent = 'Saving to shared sheet…'; saveState.classList.remove('error');
     try {
-      const payload = { event: { ...formObject(form), event_id: state.event.event.event_id }, funding: collectRows('funding'), speakers: collectRows('speaker'), posters: collectRows('poster'), venue: collectRows('venue')[0] || {}, organisations: collectRows('organisation'), attendance: collectRows('attendance'), checklist: collectRows('checklist') };
-      state.event = await api.saveEventDetail(payload); cacheEventDetail(state.event); form.dataset.dirty = 'false'; saveState.textContent = 'Saved'; toast('All changes saved to the shared sheet.');
+      const eventData = { ...formObject(form), event_id: state.event.event.event_id };
+      const hasAutomatedTasks = (state.event.tasks || []).some(task => task.generated_from_template_id && task.status !== 'Complete');
+      const dateChanged = Boolean(eventData.date && eventData.date !== state.event.event.date);
+      const updateAutomatedDeadlines = dateChanged && hasAutomatedTasks ? window.confirm('The event date has changed. Update the deadlines of incomplete automated tasks to match the new date? Manual tasks and completed automated tasks will not be changed.') : false;
+      const payload = { event: eventData, funding: collectRows('funding'), speakers: collectRows('speaker'), posters: collectRows('poster'), venue: collectRows('venue')[0] || {}, organisations: collectRows('organisation'), attendance: collectRows('attendance'), checklist: collectRows('checklist'), update_automated_task_deadlines: updateAutomatedDeadlines };
+      state.event = await api.saveEventDetail(payload); (state.event.tasks || []).forEach(cacheTask); cacheEventDetail(state.event); form.dataset.dirty = 'false'; saveState.textContent = 'Saved'; toast(updateAutomatedDeadlines ? 'Saved and updated automated task deadlines.' : 'All changes saved to the shared sheet.');
     } catch (error) { saveState.textContent = `Error saving — ${error.message}`; saveState.classList.add('error'); }
     finally { button.disabled = false; button.textContent = 'Save all changes'; }
+  });
+}
+
+function cacheTaskTemplate(template) {
+  state.bootstrap.task_templates = (state.bootstrap.task_templates || []).filter(row => row.template_id !== template.template_id).concat(template);
+}
+
+function renderSettings() {
+  const templates = [...(state.bootstrap.task_templates || [])].sort((a, b) => Number(String(b.active).toLowerCase() !== 'false') - Number(String(a.active).toLowerCase() !== 'false') || Number(a.offset_days || 0) - Number(b.offset_days || 0));
+  const members = state.bootstrap.committee || [];
+  app.innerHTML = `${configNotice()}<header class="page-header"><div><h1>Settings</h1><p>Configure optional preparation-task automation for new YEN events.</p></div><button class="btn btn-primary" id="add-task-template">+ Add task template</button></header>
+    <section class="panel"><div class="panel-header"><div><h2>Event task automation</h2><p class="subtle">Only active templates are offered when “Create preparation tasks automatically” is switched on for a new event. Changing a template never changes tasks that already exist.</p></div></div>
+      ${templates.length ? `<div class="table-wrap"><table class="responsive"><thead><tr><th>Task</th><th>Assigned to</th><th>Timing</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead><tbody>${templates.map(template => {
+        const member = members.find(row => row.member_id === template.assignee_member_id);
+        const active = String(template.active).toLowerCase() !== 'false';
+        return `<tr><td data-label="Task"><strong>${escapeHtml(template.task_name)}</strong><div class="subtle">${escapeHtml(template.description || '')}</div></td><td data-label="Assigned to">${escapeHtml(member?.name || 'Unassigned')}${member && String(member.active).toLowerCase() === 'false' ? '<div class="subtle">Inactive — generated tasks will be unassigned</div>' : ''}</td><td data-label="Timing">${escapeHtml(offsetLabel(template.offset_days))}</td><td data-label="Priority">${escapeHtml(template.priority || 'Normal')}</td><td data-label="Status">${badge(active ? 'Active' : 'Inactive')}</td><td data-label="Actions"><div class="row-actions"><button class="btn btn-secondary" data-edit-task-template="${escapeHtml(template.template_id)}">Edit</button><button class="btn btn-secondary" data-toggle-task-template="${escapeHtml(template.template_id)}">${active ? 'Deactivate' : 'Reactivate'}</button><button class="btn btn-danger" data-delete-task-template="${escapeHtml(template.template_id)}">Delete</button></div></td></tr>`;
+      }).join('')}</tbody></table></div>` : '<div class="empty-state"><h2>No task templates yet</h2><p>Add the standard preparation tasks YEN should offer when an event is created.</p></div>'}
+    </section>`;
+  document.querySelector('#add-task-template').addEventListener('click', () => openTaskTemplateDialog());
+  document.querySelectorAll('[data-edit-task-template]').forEach(button => button.addEventListener('click', () => {
+    const template = (state.bootstrap.task_templates || []).find(row => row.template_id === button.dataset.editTaskTemplate);
+    if (template) openTaskTemplateDialog(template);
+  }));
+  document.querySelectorAll('[data-toggle-task-template]').forEach(button => button.addEventListener('click', async () => {
+    const template = (state.bootstrap.task_templates || []).find(row => row.template_id === button.dataset.toggleTaskTemplate);
+    if (!template) return;
+    const activate = String(template.active).toLowerCase() === 'false';
+    button.disabled = true;
+    try {
+      const saved = await api.saveTaskTemplate({ ...template, active: String(activate) });
+      cacheTaskTemplate(saved); toast(`Task template ${activate ? 'reactivated' : 'deactivated'}. Existing tasks were not changed.`); renderSettings();
+    } catch (error) { button.disabled = false; toast(error.message, 'error'); }
+  }));
+  document.querySelectorAll('[data-delete-task-template]').forEach(button => button.addEventListener('click', async () => {
+    const template = (state.bootstrap.task_templates || []).find(row => row.template_id === button.dataset.deleteTaskTemplate);
+    if (!template || !window.confirm(`Delete the task template “${template.task_name}”? Existing generated tasks will be kept.`)) return;
+    button.disabled = true;
+    try {
+      await api.deleteTaskTemplate(template.template_id);
+      state.bootstrap.task_templates = (state.bootstrap.task_templates || []).filter(row => row.template_id !== template.template_id);
+      toast('Task template deleted. Existing tasks were kept.'); renderSettings();
+    } catch (error) { button.disabled = false; toast(error.message, 'error'); }
+  }));
+}
+
+function openTaskTemplateDialog(record = {}) {
+  const dialog = document.createElement('dialog');
+  const members = state.bootstrap.committee || [];
+  const activeValue = String(record.active ?? 'true').toLowerCase();
+  dialog.innerHTML = `<form method="dialog"><div class="dialog-header"><h2>${record.template_id ? 'Edit' : 'Add'} task template</h2><button class="icon-btn" value="cancel" aria-label="Close">✕</button></div><div class="dialog-body"><div class="form-grid"><label class="field-span">Task name<input name="task_name" required value="${escapeHtml(record.task_name)}" placeholder="Confirm venue"></label><label class="field-span">Description<textarea name="description">${escapeHtml(record.description)}</textarea></label><label>Assign to<select name="assignee_member_id"><option value="">Unassigned</option>${members.map(member => `<option value="${member.member_id}" ${member.member_id === record.assignee_member_id ? 'selected' : ''}>${escapeHtml(member.name)}${String(member.active).toLowerCase() === 'false' ? ' (inactive)' : ''}</option>`).join('')}</select></label><label>Timing in days<input name="offset_days" type="number" step="1" min="-3650" max="3650" required value="${escapeHtml(record.offset_days ?? '-30')}"><small class="field-help">Use a negative number for days before the event, 0 for the event date, or a positive number for days after.</small></label><label>Priority<select name="priority">${optionList(STATUSES.priority, record.priority || 'Normal')}</select></label><label>Status<select name="active"><option value="true" ${activeValue !== 'false' ? 'selected' : ''}>Active</option><option value="false" ${activeValue === 'false' ? 'selected' : ''}>Inactive</option></select><small class="field-help">Inactive templates are retained but are not used for new events.</small></label></div><div class="form-actions"><span class="save-state"></span><button class="btn btn-secondary" value="cancel">Cancel</button><button class="btn btn-primary" value="save">Save template</button></div></div></form>`;
+  document.body.append(dialog); dialog.showModal(); dialog.addEventListener('close', () => dialog.remove());
+  dialog.querySelector('form').addEventListener('submit', async event => {
+    if (event.submitter.value === 'cancel') return;
+    event.preventDefault(); event.submitter.disabled = true; event.submitter.textContent = 'Saving…';
+    try {
+      const saved = await api.saveTaskTemplate({ ...record, ...formObject(event.currentTarget) });
+      cacheTaskTemplate(saved); dialog.close(); toast('Task template saved.'); renderSettings();
+    } catch (error) { event.submitter.disabled = false; event.submitter.textContent = 'Save template'; dialog.querySelector('.save-state').textContent = error.message; dialog.querySelector('.save-state').classList.add('error'); }
   });
 }
 

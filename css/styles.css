@@ -105,6 +105,17 @@ input:focus, select:focus, textarea:focus { outline: 3px solid #5fb5e633; border
 .task-status-header span { color: var(--muted); font-size: .82rem; font-weight: 750; }
 .task-status-section .empty-inline { padding: 18px; }
 .meeting-status-select { min-width: 130px; margin: 0; }
+.automation-option { margin-top: 18px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: #f4f8fb; }
+.switch-row { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.switch-row input { width: 20px; min-height: 20px; margin-top: 2px; accent-color: var(--blue); }
+.switch-row span { display: grid; gap: 3px; }
+.switch-row small, .field-help { display: block; color: var(--muted); font-weight: 400; margin-top: 5px; }
+.automation-preview { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.automation-preview h3 { margin: 0 0 8px; color: var(--navy); }
+.automation-preview-list { display: grid; gap: 8px; max-height: 290px; overflow-y: auto; }
+.automation-preview-list > div { display: grid; gap: 2px; }
+.automation-preview-list span { color: var(--muted); font-size: .88rem; }
+.automation-label { display: inline-block; margin-left: 7px; padding: 2px 6px; border-radius: 100px; background: #e5f2fa; color: var(--navy); font-size: .72rem; font-weight: 700; vertical-align: middle; }
 .row-actions { display: flex; gap: 7px; align-items: center; }
 .danger-text { color: var(--danger); font-weight: 750; }
 .empty-inline { color: var(--muted); padding: 18px 0; }
@@ -140,7 +151,7 @@ dialog::backdrop { background: #10243899; }
   .task-card { grid-template-columns: 1fr auto; }
   .task-card .btn { grid-column: 1 / -1; }
 }
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .app-header { padding: 10px 16px; min-height: 64px; flex-wrap: wrap; }
   .brand small { display: none; }
   .brand-logo { width: 44px; height: 50px; }
@@ -149,6 +160,8 @@ dialog::backdrop { background: #10243899; }
   .main-nav.open { display: flex; }
   .main-nav a { padding: 10px; justify-content: start; border-left: 3px solid transparent; border-bottom: 0; }
   .main-nav a.active { border-left-color: #62b8e8; border-bottom: 0; }
+}
+@media (max-width: 720px) {
   .app-shell { padding: 22px 14px 50px; }
   .page-header { flex-direction: column; }
   .header-actions, .header-actions .btn { width: 100%; }

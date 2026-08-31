@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { eventBucket, meetingBucket, progressFor, speakerSummary, attendanceSummary, escapeHtml } from '../js/utils.js';
+import { eventBucket, meetingBucket, dateByOffset, offsetLabel, progressFor, speakerSummary, attendanceSummary, escapeHtml } from '../js/utils.js';
 
 test('past, upcoming and cancelled events are classified without deleting history', () => {
   const now = new Date('2026-08-24T12:00:00');
@@ -16,6 +16,15 @@ test('meetings are classified as upcoming, past or cancelled', () => {
   assert.equal(meetingBucket({ date: '2026-08-23', status: 'Planned' }, now), 'past');
   assert.equal(meetingBucket({ date: '2026-08-25', status: 'Cancelled' }, now), 'cancelled');
   assert.equal(meetingBucket({ date: '', status: 'Planned' }, now), 'upcoming');
+});
+
+test('task automation calculates and describes dates relative to an event', () => {
+  assert.equal(dateByOffset('2026-12-01', -30), '2026-11-01');
+  assert.equal(dateByOffset('2026-12-01', 0), '2026-12-01');
+  assert.equal(dateByOffset('2026-12-01', 2), '2026-12-03');
+  assert.equal(offsetLabel(-1), '1 day before');
+  assert.equal(offsetLabel(0), 'On the event date');
+  assert.equal(offsetLabel(14), '14 days after');
 });
 
 test('speaker summary derives confirmed count from individual records', () => {

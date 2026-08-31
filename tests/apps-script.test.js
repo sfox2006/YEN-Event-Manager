@@ -70,6 +70,67 @@ test('task schema supports assignment and progress tracking', () => {
   }
 });
 
+test('task automation schema tracks templates and generated task offsets', () => {
+  const context = contextFor();
+  const templateHeaders = vm.runInContext('SCHEMA.Task_Templates', context);
+  for (const field of ['template_id', 'task_name', 'description', 'assignee_member_id', 'offset_days', 'priority', 'active', 'created_at', 'updated_at']) assert.ok(templateHeaders.includes(field));
+  const taskHeaders = vm.runInContext('SCHEMA.Event_Tasks', context);
+  assert.ok(taskHeaders.includes('generated_from_template_id'));
+  assert.ok(taskHeaders.includes('due_date_offset_days'));
+});
+
+test('automated tasks use deadlines before, on and after an event and are not duplicated on retry', () => {
+  const tasks = [];
+  const event = { event_id: 'event_1', date: '2026-12-01' };
+  const templates = [
+    { template_id: 'template_before', task_name: 'Before', offset_days: '-90', assignee_member_id: 'active_member' },
+    { template_id: 'template_on', task_name: 'On', offset_days: '0', assignee_member_id: 'inactive_member' },
+    { template_id: 'template_after', task_name: 'After', offset_days: '2' }
+  ];
+  const context = contextFor({ tasks, event, templates });
+  const first = vm.runInContext("generateAutomatedTasksInMemory_(tasks, event, templates, 'now', ['active_member'])", context);
+  const second = vm.runInContext("generateAutomatedTasksInMemory_(tasks, event, templates, 'later', ['active_member'])", context);
+  assert.equal(tasks.length, 3);
+  assert.equal(first[0].due_date, '2026-09-02');
+  assert.equal(first[1].due_date, '2026-12-01');
+  assert.equal(first[2].due_date, '2026-12-03');
+  assert.equal(first[0].task_id, 'task_auto_event_1_template_before');
+  assert.equal(first[0].assignee_member_id, 'active_member');
+  assert.equal(first[1].assignee_member_id, '');
+  assert.equal(second[0].task_id, first[0].task_id);
+});
+
+test('event date changes update only incomplete automated tasks', () => {
+  const tasks = [
+    { task_id: 'auto_open', event_id: 'event_1', generated_from_template_id: 'template_1', due_date_offset_days: '-30', due_date: '2026-11-01', status: 'In progress', updated_at: 'old' },
+    { task_id: 'auto_done', event_id: 'event_1', generated_from_template_id: 'template_2', due_date_offset_days: '-7', due_date: '2026-11-24', status: 'Complete', updated_at: 'old' },
+    { task_id: 'manual', event_id: 'event_1', due_date: '2026-11-20', status: 'Not started', updated_at: 'old' },
+    { task_id: 'other_event', event_id: 'event_2', generated_from_template_id: 'template_1', due_date_offset_days: '-30', due_date: '2026-11-01', status: 'Not started', updated_at: 'old' }
+  ];
+  const context = contextFor({ tasks });
+  const changed = vm.runInContext("updateAutomatedTaskDeadlinesInMemory_(tasks, 'event_1', '2026-12-15', 'now')", context);
+  assert.equal(changed.length, 1);
+  assert.equal(tasks[0].due_date, '2026-11-15');
+  assert.equal(tasks[0].updated_at, 'now');
+  assert.equal(tasks[1].due_date, '2026-11-24');
+  assert.equal(tasks[2].due_date, '2026-11-20');
+  assert.equal(tasks[3].due_date, '2026-11-01');
+});
+
+test('starter templates cover the requested event lifecycle and preserve YEN assignee conventions', () => {
+  const tasks = [{ task_name: 'Posters', assignee_member_id: 'member_posters' }];
+  const committee = [{ member_id: 'member_posters', role: 'Committee Member', active: 'TRUE' }];
+  const context = contextFor({ tasks, committee });
+  const definitions = vm.runInContext('DEFAULT_TASK_TEMPLATES', context);
+  assert.ok(definitions.length >= 15);
+  assert.ok(definitions.some(row => Number(row.offset_days) < 0));
+  assert.ok(definitions.some(row => Number(row.offset_days) === 0));
+  assert.ok(definitions.some(row => Number(row.offset_days) > 0));
+  const posterDefinition = definitions.find(row => row.template_id === 'template_default_posters');
+  assert.equal(vm.runInContext('inferTemplateAssignee_(DEFAULT_TASK_TEMPLATES.find(function (row) { return row.template_id === "template_default_posters"; }), tasks, committee)', context), 'member_posters');
+  assert.equal(posterDefinition.task_name, 'Posters');
+});
+
 test('meeting schema supports scheduling, links and notes', () => {
   const context = contextFor();
   const headers = vm.runInContext('SCHEMA.Meetings', context);

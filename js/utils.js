@@ -53,6 +53,20 @@ export function meetingBucket(meeting, today = new Date()) {
   return new Date(`${meeting.date}T23:59:59`) < today ? 'past' : 'upcoming';
 }
 
+export function dateByOffset(eventDate, offsetDays) {
+  if (!eventDate) return '';
+  const date = new Date(`${eventDate}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return '';
+  date.setUTCDate(date.getUTCDate() + Number(offsetDays || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+export function offsetLabel(offsetDays) {
+  const days = Number(offsetDays || 0);
+  if (days === 0) return 'On the event date';
+  return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ${days < 0 ? 'before' : 'after'}`;
+}
+
 export function progressFor(detail) {
   const checks = [];
   const add = (applicable, done) => { if (applicable) checks.push(Boolean(done)); };
