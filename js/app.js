@@ -5,9 +5,52 @@ const app = document.querySelector('#app');
 const nav = document.querySelector('#main-nav');
 const navToggle = document.querySelector('.nav-toggle');
 const state = { bootstrap: null, event: null, filter: 'upcoming', meetingFilter: 'upcoming', taskMemberFilter: '' };
+let deferredInstallPrompt = null;
 
 const badge = value => `<span class="badge badge-${statusTone(value)}">${escapeHtml(value || 'Not set')}</span>`;
 const uid = prefix => `${prefix}_${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
+
+function isStandaloneApp() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function updateConnectivity() {
+  const notice = document.querySelector('#offline-notice');
+  if (notice) notice.hidden = navigator.onLine;
+}
+
+function updateInstallControls() {
+  const button = document.querySelector('#install-app');
+  const help = document.querySelector('#install-app-help');
+  if (!button || !help) return;
+  const installed = isStandaloneApp();
+  button.hidden = installed || !deferredInstallPrompt;
+  if (installed) help.textContent = 'The YEN Event Manager is installed and running as an app.';
+  else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) help.textContent = 'On iPhone or iPad, open this page in Safari, tap Share, choose Add to Home Screen, turn on Open as Web App, then tap Add.';
+  else if (deferredInstallPrompt) help.textContent = 'Install the dashboard so it opens from your Home Screen like an app.';
+  else help.textContent = 'Use your browser’s Install app or Add to Home Screen option. Event data still requires an internet connection.';
+}
+
+async function installApp() {
+  if (!deferredInstallPrompt) return;
+  await deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  updateInstallControls();
+}
+
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  updateInstallControls();
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  updateInstallControls();
+});
+window.addEventListener('online', updateConnectivity);
+window.addEventListener('offline', updateConnectivity);
+updateConnectivity();
 
 navToggle.addEventListener('click', () => {
   const open = nav.classList.toggle('open');
@@ -581,7 +624,8 @@ function cacheTaskTemplate(template) {
 function renderSettings() {
   const templates = [...(state.bootstrap.task_templates || [])].sort((a, b) => Number(String(b.active).toLowerCase() !== 'false') - Number(String(a.active).toLowerCase() !== 'false') || Number(a.offset_days || 0) - Number(b.offset_days || 0));
   const members = state.bootstrap.committee || [];
-  app.innerHTML = `${configNotice()}<header class="page-header"><div><h1>Settings</h1><p>Configure optional preparation-task automation for new YEN events.</p></div><button class="btn btn-primary" id="add-task-template">+ Add task template</button></header>
+  app.innerHTML = `${configNotice()}<header class="page-header"><div><h1>Settings</h1><p>Configure the app and optional preparation-task automation for new YEN events.</p></div><button class="btn btn-primary" id="add-task-template">+ Add task template</button></header>
+    <section class="panel install-app-panel"><div class="panel-header"><div><h2>Install the phone app</h2><p class="subtle" id="install-app-help">Install the dashboard so it opens from your Home Screen like an app.</p></div><button class="btn btn-primary" id="install-app" type="button" hidden>Install app</button></div><div class="panel-body"><p class="subtle">The installed app uses the same shared Google Sheet and Apps Script backend as this website. The interface can open when offline, but loading current records and saving changes require an internet connection.</p></div></section>
     <section class="panel"><div class="panel-header"><div><h2>Event task automation</h2><p class="subtle">Only active templates are offered when “Create preparation tasks automatically” is switched on for a new event. Changing a template never changes tasks that already exist.</p></div></div>
       ${templates.length ? `<div class="table-wrap"><table class="responsive"><thead><tr><th>Task</th><th>Assigned to</th><th>Timing</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead><tbody>${templates.map(template => {
         const member = members.find(row => row.member_id === template.assignee_member_id);
@@ -589,6 +633,8 @@ function renderSettings() {
         return `<tr><td data-label="Task"><strong>${escapeHtml(template.task_name)}</strong><div class="subtle">${escapeHtml(template.description || '')}</div></td><td data-label="Assigned to">${escapeHtml(member?.name || 'Unassigned')}${member && String(member.active).toLowerCase() === 'false' ? '<div class="subtle">Inactive — generated tasks will be unassigned</div>' : ''}</td><td data-label="Timing">${escapeHtml(offsetLabel(template.offset_days))}</td><td data-label="Priority">${escapeHtml(template.priority || 'Normal')}</td><td data-label="Status">${badge(active ? 'Active' : 'Inactive')}</td><td data-label="Actions"><div class="row-actions"><button class="btn btn-secondary" data-edit-task-template="${escapeHtml(template.template_id)}">Edit</button><button class="btn btn-secondary" data-toggle-task-template="${escapeHtml(template.template_id)}">${active ? 'Deactivate' : 'Reactivate'}</button><button class="btn btn-danger" data-delete-task-template="${escapeHtml(template.template_id)}">Delete</button></div></td></tr>`;
       }).join('')}</tbody></table></div>` : '<div class="empty-state"><h2>No task templates yet</h2><p>Add the standard preparation tasks YEN should offer when an event is created.</p></div>'}
     </section>`;
+  document.querySelector('#install-app')?.addEventListener('click', installApp);
+  updateInstallControls();
   document.querySelector('#add-task-template').addEventListener('click', () => openTaskTemplateDialog());
   document.querySelectorAll('[data-edit-task-template]').forEach(button => button.addEventListener('click', () => {
     const template = (state.bootstrap.task_templates || []).find(row => row.template_id === button.dataset.editTaskTemplate);
@@ -669,6 +715,10 @@ function openDirectoryDialog(kind, record = {}) {
       dialog.close(); toast('Saved to the shared sheet.'); isMember ? renderCommittee() : renderOrganisations();
     } catch (error) { event.submitter.disabled = false; dialog.querySelector('.save-state').textContent = error.message; dialog.querySelector('.save-state').classList.add('error'); }
   });
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(error => console.warn('Service worker registration failed:', error)));
 }
 
 if (!location.hash) location.hash = '#/dashboard'; else route();

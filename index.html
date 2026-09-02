@@ -4,9 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Shared event management for the Young Economists Network Organising Committee">
+  <meta name="theme-color" content="#12304a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="YEN Events">
   <title>YEN Event Manager</title>
-  <link rel="icon" type="image/png" href="assets/yen-logo.png">
-  <link rel="stylesheet" href="css/styles.css?v=20260831-task-automation">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/styles.css?v=20260902-pwa">
 </head>
 <body>
   <header class="app-header">
@@ -25,11 +31,12 @@
       <a href="#/settings" data-route="settings">Settings</a>
     </nav>
   </header>
+  <div id="offline-notice" class="offline-notice" role="status" hidden>You’re offline. You can view the app interface, but shared event data and saving need an internet connection.</div>
   <main id="app" class="app-shell" tabindex="-1">
     <div class="loading-state"><span class="spinner" aria-hidden="true"></span><p>Loading shared event data…</p></div>
   </main>
   <div id="toast-region" class="toast-region" aria-live="polite"></div>
   <script src="js/config.js"></script>
-  <script type="module" src="js/app.js?v=20260831-task-automation"></script>
+  <script type="module" src="js/app.js?v=20260902-pwa"></script>
 </body>
 </html>

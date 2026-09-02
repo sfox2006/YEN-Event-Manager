@@ -21,6 +21,7 @@ The browser interface is hosted by GitHub Pages. It reads and writes JSON throug
 - Stable record IDs and retained historical records
 - Explicit shared-save status, retryable errors, loading and empty states
 - Mobile layouts that turn wide event tables into readable labelled cards
+- Installable phone-app experience with YEN Home Screen icons, standalone display and a cached interface shell
 - Apps Script setup function that creates every required Sheet tab and header
 
 ## Architecture
@@ -116,6 +117,25 @@ with the copied `/exec` URL. Commit and push that one-line change. The deploymen
 
 No compilation or build command is required.
 
+## Install on a phone
+
+The GitHub Pages dashboard is also a Progressive Web App (PWA). The installed app uses the same Apps Script deployment and Google Sheet as the website, so no second backend or data migration is required.
+
+### iPhone or iPad
+
+1. Open `https://sfox2006.github.io/YEN-Event-Manager/` in Safari.
+2. Tap **Share**.
+3. Choose **Add to Home Screen**.
+4. Turn on **Open as Web App**, then tap **Add**.
+
+### Android
+
+1. Open the dashboard in Chrome or another supporting browser.
+2. Open **Settings** in the YEN dashboard and use **Install app** when the button is shown, or select **Install app / Add to Home screen** from the browser menu.
+3. Confirm the installation.
+
+The installed app launches in a standalone window with the YEN icon. Its interface files are cached so the app shell can open without a connection. Current events, meetings, tasks and settings are deliberately not cached by the service worker: loading shared records and saving changes still require internet access, preventing stale private committee data from being treated as current.
+
 ## Verify reading and writing
 
 ### Quick connection test
@@ -154,6 +174,8 @@ Then open the GitHub Pages site. The yellow “not connected” notice should be
 22. Create the event with automation. Confirm generated tasks appear both in the event and in the grouped Tasks page with an **Automated** label.
 23. Change the event date and accept the deadline-update prompt. Confirm incomplete automated tasks move by their original offsets, while manual tasks and completed automated tasks keep their existing deadlines.
 24. Deactivate or delete a template and confirm any tasks previously generated from it remain editable and can still be reassigned, completed or deleted.
+25. Install the app on an iPhone or Android device, launch it from the Home Screen and verify it opens directly to the Dashboard.
+26. Temporarily disable the phone's connection and confirm the offline notice explains that shared data and saving require internet access; reconnect and confirm the current dashboard reloads.
 
 Automated checks cover readiness calculations, event classification, automation schema, relative deadlines, retry duplicate prevention, date recalculation, preservation of manual/completed tasks, task relationships and stable IDs. Steps involving the live Google deployment must be run after the Sheet owner authorizes Apps Script.
 
@@ -265,6 +287,9 @@ Then open `http://localhost:8000`. Shared reads and writes still go to the confi
 
 ```text
 ├── index.html
+├── manifest.webmanifest
+├── service-worker.js
+├── assets/icons/
 ├── css/styles.css
 ├── js/
 │   ├── app.js
